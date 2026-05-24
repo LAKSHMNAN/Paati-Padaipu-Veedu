@@ -88,6 +88,8 @@ class MemberSerializer(serializers.ModelSerializer):
 
 
 class ReceiptSerializer(serializers.ModelSerializer):
+    DUPLICATE_RECEIPT_MESSAGE = "This receipt number is already used so use another receipt number"
+
     member_name = serializers.CharField(source="member.name", read_only=True, allow_null=True)
     relative_name = serializers.CharField(source="relative.name", read_only=True, allow_null=True)
     non_member_id = serializers.CharField(source="relative.non_member_id", read_only=True, allow_null=True)
@@ -112,6 +114,21 @@ class ReceiptSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        extra_kwargs = {
+            "receipt_no": {"validators": []},
+        }
+
+    def validate_receipt_no(self, value):
+        receipt_no = str(value or "").strip()
+        if not receipt_no:
+            raise serializers.ValidationError("Receipt No is required.")
+
+        queryset = Receipt.objects.filter(receipt_no=receipt_no)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError(self.DUPLICATE_RECEIPT_MESSAGE)
+        return receipt_no
 
     def get_source_id(self, obj):
         if obj.member:

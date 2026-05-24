@@ -133,6 +133,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
   const [quantityPopup, setQuantityPopup] = useState(false);
+  const [receiptDuplicatePopup, setReceiptDuplicatePopup] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [manualTranslationOverrides, setManualTranslationOverrides] = useState({});
   const [lastAutoTranslations, setLastAutoTranslations] = useState({});
@@ -315,6 +316,8 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
       // Check if error is related to quantity limit
       if (detailString.includes("The requested item is no longer available")) {
         setQuantityPopup(true);
+      } else if (detailString.includes("This receipt number is already used so use another receipt number")) {
+        setReceiptDuplicatePopup(true);
       } else {
         setError(detailString);
       }
@@ -525,6 +528,58 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     )
     : null;
 
+  const receiptDuplicatePopupMarkup = receiptDuplicatePopup
+    ? createPortal(
+      <div
+        className="modal-backdrop"
+        role="presentation"
+        onClick={() => setReceiptDuplicatePopup(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px",
+          background: "rgba(43, 33, 22, 0.45)",
+          zIndex: 10000,
+        }}
+      >
+        <div
+          className="modal-card"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Duplicate Receipt Alert"
+          style={{
+            width: "min(400px, calc(100vw - 32px))",
+            borderRadius: "24px",
+            padding: "24px",
+            background: "var(--panel-strong)",
+            border: "1px solid var(--line)",
+            boxShadow: "var(--shadow)",
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div style={{ textAlign: "center" }}>
+            <h3 style={{ marginBottom: "12px" }}>Receipt Number Already Used</h3>
+            <p style={{ marginBottom: "24px", color: "var(--text-secondary)" }}>
+              This receipt number is already used so use another receipt number
+            </p>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => setReceiptDuplicatePopup(false)}
+              style={{ width: "100%" }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+    : null;
+
   return (
     <section className="resource-card" id={config.endpoint}>
       <div className="resource-header">
@@ -633,6 +688,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
 
       {modalMarkup && typeof document !== "undefined" ? createPortal(modalMarkup, document.body) : null}
       {quantityPopupMarkup}
+      {receiptDuplicatePopupMarkup}
     </section>
   );
 }

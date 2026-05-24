@@ -9,6 +9,7 @@ import ModuleIcon from "./components/ModuleIcon";
 import { fetchCollection, fetchCurrentUser, fetchDashboard, logoutUser } from "./services/api";
 
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+const amount = (value) => Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 const paymentStatusBadge = (status) => (
   <span className={`payment-status payment-status--${String(status || "").toLowerCase()}`}>
     {status || "-"}
@@ -370,7 +371,7 @@ export default function App() {
         { key: "native_place", label: "Native Place" },
         { key: "token_number", label: "Token" },
         { key: "item_name", label: "Item" },
-        { key: "price", label: "Price", render: (row) => money(row.price) },
+        { key: "price", label: "Price (Rs)", render: (row) => amount(row.price) },
         { key: "payment_status", label: "Payment Status", render: (row) => paymentStatusBadge(row.payment_status) },
         { key: "receipt_no", label: "Receipt" },
       ],
@@ -382,7 +383,7 @@ export default function App() {
         { key: "native_place", label: "Native Place" },
         { key: "token_number", label: "Token" },
         { key: "item_name", label: "Item" },
-        { key: "price", label: "Price" },
+        { key: "price", label: "Price (Rs)", render: (row) => amount(row.price) },
         { key: "payment_status", label: "Payment Status", render: (row) => paymentStatusBadge(row.payment_status) },
         { key: "receipt_no", label: "Receipt" },
       ],

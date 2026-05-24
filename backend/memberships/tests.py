@@ -76,6 +76,28 @@ class MembershipModelTests(TestCase):
             receipt = Receipt(receipt_no="R001", member=self.member, phone_number="9000000000")
             receipt.full_clean()
 
+    def test_receipt_api_rejects_duplicate_receipt_number(self):
+        client = APIClient()
+        Receipt.objects.create(receipt_no="R001", member=self.member, phone_number="9876543210")
+
+        response = client.post(
+            "/api/receipts/",
+            {
+                "receipt_no": "R001",
+                "member": self.member.member_id,
+                "relative": None,
+                "phone_number": "9876543210",
+                "receipt_date": "2026-05-24",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["receipt_no"][0],
+            "This receipt number is already used so use another receipt number",
+        )
+
     def test_auction_item_auto_generates_tokens_from_quantity(self):
         self.assertEqual(self.item.auction_item_name, "Silver Lamp")
         self.assertEqual(self.item.tokens, [1, 2])

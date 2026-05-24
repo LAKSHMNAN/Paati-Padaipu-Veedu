@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchAuctionTransactionReport, getAuctionTransactionReportUrl } from "../services/api";
 
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+const amount = (value) => Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 const paymentStatusBadge = (status) => (
   <span className={`payment-status payment-status--${String(status || "").toLowerCase()}`}>
     {status || "-"}
@@ -158,7 +159,7 @@ export default function AuctionReports() {
               <th>Type</th>
               <th>Item</th>
               <th>Token</th>
-              <th>Price</th>
+              <th>Price (Rs)</th>
               <th>Status</th>
               {showReceiptColumn ? <th>Receipt</th> : null}
               <th>Date</th>
@@ -180,7 +181,7 @@ export default function AuctionReports() {
                   <td>{transaction.source_type}</td>
                   <td>{transaction.item_name}</td>
                   <td>{transaction.token_number}</td>
-                  <td>{money(transaction.price)}</td>
+                  <td>{amount(transaction.price)}</td>
                   <td>{paymentStatusBadge(transaction.payment_status)}</td>
                   {showReceiptColumn ? <td>{transaction.receipt_no || "-"}</td> : null}
                   <td>{transaction.created_at ? new Date(transaction.created_at).toLocaleString("en-IN") : "-"}</td>
