@@ -10,6 +10,7 @@ import { fetchCollection, fetchCurrentUser, fetchDashboard, logoutUser } from ".
 
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 const amount = (value) => Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+const LOOKUP_LIMIT = 1000;
 const paymentStatusBadge = (status) => (
   <span className={`payment-status payment-status--${String(status || "").toLowerCase()}`}>
     {status || "-"}
@@ -30,10 +31,10 @@ export default function App() {
 
   const loadLookups = async () => {
     const [memberRows, receiptRows, relativeRows, auctionItemRows, dashboardData] = await Promise.allSettled([
-      fetchCollection("members"),
-      fetchCollection("receipts"),
-      fetchCollection("relatives"),
-      fetchCollection("auction-items"),
+      fetchCollection("members", "", { limit: LOOKUP_LIMIT }),
+      fetchCollection("receipts", "", { limit: LOOKUP_LIMIT }),
+      fetchCollection("relatives", "", { limit: LOOKUP_LIMIT }),
+      fetchCollection("auction-items", "", { limit: LOOKUP_LIMIT }),
       fetchDashboard(),
     ]);
     setMembers(memberRows.status === "fulfilled" ? memberRows.value : []);

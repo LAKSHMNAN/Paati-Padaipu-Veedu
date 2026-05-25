@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import DataTable from "./DataTable";
 import { createItem, deleteItem, fetchCollection, translateAuctionItemName, updateItem } from "../services/api";
 
+const PAGE_SIZE = 10;
+
 const buildInitialState = (fields) =>
   fields.reduce((acc, field) => {
     acc[field.name] = field.defaultValue ?? "";
@@ -137,16 +139,26 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [manualTranslationOverrides, setManualTranslationOverrides] = useState({});
   const [lastAutoTranslations, setLastAutoTranslations] = useState({});
+  const [pagination, setPagination] = useState({ count: 0, limit: PAGE_SIZE, offset: 0 });
 
   const translationConfig = config.translationConfig;
   const isPendingReceiptFlow = config.endpoint === "receipts" && Boolean(pendingAuctionTransaction);
 
-  const loadItems = async (term = "") => {
+  const loadItems = async (term = "", nextOffset = pagination.offset) => {
     try {
-      const response = await fetchCollection(config.endpoint, term);
-      setItems(response);
-      if (config.showFullRecordOnSingleResult && term && response.length === 1) {
-        setSelectedItem(response[0]);
+      const response = await fetchCollection(config.endpoint, term, {
+        limit: PAGE_SIZE,
+        offset: nextOffset,
+        returnPage: true,
+      });
+      setItems(response.results);
+      setPagination({
+        count: response.count,
+        limit: PAGE_SIZE,
+        offset: nextOffset,
+      });
+      if (config.showFullRecordOnSingleResult && term && response.results.length === 1) {
+        setSelectedItem(response.results[0]);
       } else if (!term) {
         setSelectedItem(null);
       }
@@ -156,7 +168,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
   };
 
   useEffect(() => {
-    loadItems(search);
+    loadItems(search, 0);
   }, [config.endpoint]);
 
   const resetForm = () => {
@@ -280,7 +292,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
 
   const handleSearch = async (event) => {
     event.preventDefault();
-    await loadItems(search);
+    await loadItems(search, 0);
   };
 
   const handleSubmit = async (event) => {
@@ -307,7 +319,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
         setSelectedItem(createdItem);
       }
       resetForm();
-      await loadItems(search);
+      await loadItems(search, pagination.offset);
       onDataChange?.();
     } catch (submitError) {
       const detail = submitError.response?.data;
@@ -354,7 +366,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     }
     try {
       await deleteItem(config.endpoint, item[config.rowKey]);
-      await loadItems(search);
+      await loadItems(search, pagination.offset);
       onDataChange?.();
       setFeedback(`${config.title} deleted.`);
       if (editingId === item[config.rowKey]) {
@@ -617,6 +629,8 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
           onEdit={handleEdit}
           onDelete={handleDelete}
           rowKey={config.rowKey}
+          pagination={pagination}
+          onPageChange={(nextOffset) => loadItems(search, nextOffset)}
         />
       </div>
 

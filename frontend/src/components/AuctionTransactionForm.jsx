@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import DataTable from "./DataTable";
 import { createItem, deleteItem, fetchCollection, updateItem } from "../services/api";
 
+const PAGE_SIZE = 10;
+
 const INITIAL_ITEM_FORM_STATE = {
   auction_item_id: "",
   token_number: "",
@@ -41,18 +43,28 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   const [selectedSource, setSelectedSource] = useState(null);
   const [itemFormState, setItemFormState] = useState(INITIAL_ITEM_FORM_STATE);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [pagination, setPagination] = useState({ count: 0, limit: PAGE_SIZE, offset: 0 });
 
-  const loadItems = async (term = "") => {
+  const loadItems = async (term = "", nextOffset = pagination.offset) => {
     try {
-      const response = await fetchCollection(config.endpoint, term);
-      setItems(response);
+      const response = await fetchCollection(config.endpoint, term, {
+        limit: PAGE_SIZE,
+        offset: nextOffset,
+        returnPage: true,
+      });
+      setItems(response.results);
+      setPagination({
+        count: response.count,
+        limit: PAGE_SIZE,
+        offset: nextOffset,
+      });
     } catch (loadError) {
       setError(loadError.response?.data?.detail || "Unable to load data.");
     }
   };
 
   useEffect(() => {
-    loadItems(search);
+    loadItems(search, 0);
   }, [config.endpoint]);
 
   const sourceOptions = useMemo(() => {
@@ -159,7 +171,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
 
   const handleSearch = async (event) => {
     event.preventDefault();
-    await loadItems(search);
+    await loadItems(search, 0);
   };
 
   const resetCreateState = () => {
@@ -235,7 +247,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
       await createItem(config.endpoint, payload);
       setFeedback("Auction Transaction created successfully.");
       closeCreateModal();
-      await loadItems(search);
+      await loadItems(search, pagination.offset);
       onDataChange?.();
     } catch (submitError) {
       const detail = submitError.response?.data;
@@ -261,7 +273,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
     }
     try {
       await deleteItem(config.endpoint, item.id);
-      await loadItems(search);
+      await loadItems(search, pagination.offset);
       onDataChange?.();
       setFeedback("Auction Transaction deleted.");
       if (selectedItem?.id === item.id) {
@@ -286,7 +298,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
       await updateItem(config.endpoint, selectedItem.id, { payment_status: editPaymentStatus });
       setFeedback("Payment status updated successfully.");
       setEditModalOpen(false);
-      await loadItems(search);
+      await loadItems(search, pagination.offset);
       onDataChange?.();
       setSelectedItem(null);
     } catch (updateError) {
@@ -628,6 +640,8 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
         onEdit={handleEdit}
         onDelete={handleDelete}
         rowKey={config.rowKey}
+        pagination={pagination}
+        onPageChange={(nextOffset) => loadItems(search, nextOffset)}
         extraActions={(row) =>
           row.payment_status === "Unpaid" ? (
             <button type="button" className="ghost-button" onClick={() => handleOpenReceiptTransaction(row)}>

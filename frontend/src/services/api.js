@@ -24,10 +24,30 @@ export const fetchCurrentUser = async () => {
   return data.user;
 };
 
-export const fetchCollection = async (endpoint, search = "") => {
+export const fetchCollection = async (endpoint, search = "", options = {}) => {
+  const params = {};
+  if (search) {
+    params.search = search;
+  }
+  if (Number.isFinite(options.limit)) {
+    params.limit = options.limit;
+  }
+  if (Number.isFinite(options.offset)) {
+    params.offset = options.offset;
+  }
+
   const { data } = await api.get(`/${endpoint}/`, {
-    params: search ? { search } : {},
+    params,
   });
+  if (options.returnPage) {
+    const results = data.results || data;
+    return {
+      results,
+      count: data.count ?? results.length,
+      next: data.next || null,
+      previous: data.previous || null,
+    };
+  }
   return data.results || data;
 };
 
@@ -55,10 +75,20 @@ export const fetchDashboard = async () => {
   return data;
 };
 
-export const fetchAuctionTransactionReport = async (status = "", search = "") => {
+export const fetchAuctionTransactionReport = async (status = "", search = "", options = {}) => {
   const statusPath = status ? `${status}/` : "";
+  const params = {};
+  if (search) {
+    params.search = search;
+  }
+  if (Number.isFinite(options.limit)) {
+    params.limit = options.limit;
+  }
+  if (Number.isFinite(options.offset)) {
+    params.offset = options.offset;
+  }
   const { data } = await api.get(`/reports/auction-transactions/${statusPath}`, {
-    params: search ? { search } : {},
+    params,
   });
   return data;
 };

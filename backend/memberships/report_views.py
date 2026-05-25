@@ -26,34 +26,84 @@ def normalize_pdf_output(pdf_output):
     return pdf_output
 
 
-def truncate_pdf_text(value, max_length):
-    text = str(value or "-")
-    return text if len(text) <= max_length else f"{text[: max_length - 3]}..."
+def fit_pdf_cell_text(pdf, value, width, style="", max_size=8, min_size=5):
+    text = " ".join(str(value if value not in [None, ""] else "-").split())
+    available_width = max(width - 2, 1)
+
+    for font_size in range(max_size, min_size - 1, -1):
+        pdf.set_font("Arial", style, size=font_size)
+        if pdf.get_string_width(text) <= available_width:
+            return text, font_size
+
+    pdf.set_font("Arial", style, size=min_size)
+    ellipsis = "..."
+    if pdf.get_string_width(ellipsis) > available_width:
+        return "", min_size
+
+    trimmed = text
+    while trimmed and pdf.get_string_width(f"{trimmed}{ellipsis}") > available_width:
+        trimmed = trimmed[:-1]
+    return f"{trimmed.rstrip()}{ellipsis}", min_size
 
 
 def draw_pdf_table_header(pdf, columns):
     pdf.set_fill_color(139, 94, 52)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", "B", size=8)
-    for label, width, _max_length in columns:
-        pdf.cell(width, 8, label, border=1, align="C", fill=True)
-    pdf.ln()
+    draw_pdf_wrapped_row(pdf, columns, [label for label, _width, _max_length in columns], fill=True, align="C")
     pdf.set_text_color(0, 0, 0)
 
 
-def draw_pdf_table_row(pdf, columns, values):
-    if pdf.get_y() > 185:
-        pdf.add_page()
-        draw_pdf_table_header(pdf, columns)
+def draw_pdf_wrapped_row(pdf, columns, values, fill=False, align="L"):
+    row_height = 7
+    cell_padding = 1
+    font_style = "B" if fill else ""
+    fitted_values = [
+        fit_pdf_cell_text(pdf, value, width, style=font_style)
+        for (_label, width, _max_length), value in zip(columns, values)
+    ]
 
-    pdf.set_font("Arial", size=8)
-    for (_label, width, max_length), value in zip(columns, values):
-        pdf.cell(width, 7, truncate_pdf_text(value, max_length), border=1)
-    pdf.ln()
+    page_break_trigger = getattr(pdf, "page_break_trigger", 185)
+    if pdf.get_y() + row_height > page_break_trigger:
+        pdf.add_page()
+        if not fill:
+            draw_pdf_table_header(pdf, columns)
+
+    x_start = pdf.get_x()
+    y_start = pdf.get_y()
+
+    for (_label, width, _max_length), fitted_value in zip(columns, fitted_values):
+        x = pdf.get_x()
+        y = pdf.get_y()
+        pdf.rect(x, y, width, row_height, "DF" if fill else "")
+        text, font_size = fitted_value
+        pdf.set_font("Arial", font_style, size=font_size)
+        pdf.set_xy(x + cell_padding, y + 2)
+        pdf.cell(width - (cell_padding * 2), 3, text, border=0, align=align)
+        pdf.set_xy(x + width, y)
+
+    pdf.set_xy(x_start, y_start + row_height)
+
+
+def draw_pdf_table_row(pdf, columns, values):
+    pdf.set_text_color(0, 0, 0)
+    draw_pdf_wrapped_row(pdf, columns, values)
 
 
 def make_json_ready(value):
     return json.loads(json.dumps(value, default=str))
+
+
+def get_limit_offset(request):
+    try:
+        limit = int(request.GET.get("limit", 10))
+    except (TypeError, ValueError):
+        limit = 10
+    try:
+        offset = int(request.GET.get("offset", 0))
+    except (TypeError, ValueError):
+        offset = 0
+    return max(limit, 1), max(offset, 0)
 
 
 def money_decimal(value):
@@ -78,6 +128,15 @@ def get_transaction_source_name(transaction):
 
 def get_transaction_source_type(transaction):
     return "Member" if transaction.member else "Non-Member"
+
+
+def get_transaction_payment_date(transaction):
+    receipt_date = transaction.receipt.receipt_date if transaction.receipt else None
+    return receipt_date.strftime("%Y-%m-%d") if receipt_date else ""
+
+
+def get_transaction_receipt_no(transaction):
+    return transaction.receipt.receipt_no if transaction.receipt else "-"
 
 
 def build_excel_response(workbook, filename):
@@ -224,7 +283,7 @@ def create_payment_status_excel_workbook(data, status_label):
         "Token No",
         "Price",
         "Payment Status",
-        "Date",
+        "Payment Date",
     ]
     for col, header in enumerate(transaction_headers, 1):
         worksheet.cell(row=transaction_header_row, column=col).value = header
@@ -242,7 +301,7 @@ def create_payment_status_excel_workbook(data, status_label):
             txn.token_number,
             money_decimal(txn.price),
             txn.payment_status,
-            txn.created_at.strftime("%d-%m-%Y %I:%M %p"),
+            get_transaction_payment_date(txn),
         ]
         for col, value in enumerate(values, 1):
             worksheet.cell(row=row, column=col).value = value
@@ -426,10 +485,22 @@ class AuctionTransactionReportView(View):
         
         data = self.get_report_data()
         store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL)
-        serializer = AuctionTransactionReportDataSerializer(data)
+        limit, offset = get_limit_offset(self.request)
+        transaction_count = data["transactions"].count()
+        paged_transactions = data["transactions"][offset : offset + limit]
+        payload = {
+            "summary": data["summary"],
+            "payment_status_breakdown": data["payment_status_breakdown"],
+            "transactions": AuctionTransactionDetailReportSerializer(paged_transactions, many=True).data,
+            "pagination": {
+                "count": transaction_count,
+                "limit": limit,
+                "offset": offset,
+            },
+        }
         
         return HttpResponse(
-            json.dumps(serializer.data, default=str),
+            json.dumps(payload, default=str),
             content_type="application/json",
             status=200,
         )
@@ -479,7 +550,7 @@ class AuctionTransactionReportView(View):
         writer.writerow(["DETAILED TRANSACTIONS"])
         writer.writerow([
             "ID", "Member/Non-Member ID", "Member/Non-Member Name", "Source Type", "Item",
-            "Token Number", "Price", "Payment Status", "Date"
+            "Token Number", "Price", "Payment Status", "Payment Date"
         ])
         
         for txn in transactions:
@@ -492,7 +563,7 @@ class AuctionTransactionReportView(View):
                 txn.token_number,
                 f"Rs. {txn.price}",
                 txn.payment_status,
-                txn.created_at.strftime("%Y-%m-%d %H:%M"),
+                get_transaction_payment_date(txn),
             ])
 
         # Generate HTTP response
@@ -607,7 +678,7 @@ class AuctionTransactionReportView(View):
 
         headers = [
             "ID", "Member/Non-Member ID", "Member/Non-Member", "Source Type", "Item",
-            "Token", "Price (Rs.)", "Payment Status", "Date"
+            "Token", "Price (Rs.)", "Payment Status", "Payment Date"
         ]
         
         for col, header in enumerate(headers, 1):
@@ -628,7 +699,7 @@ class AuctionTransactionReportView(View):
             worksheet[f"F{row}"] = txn.token_number
             worksheet[f"G{row}"] = txn.price
             worksheet[f"H{row}"] = txn.payment_status
-            worksheet[f"I{row}"] = txn.created_at.strftime("%Y-%m-%d %H:%M")
+            worksheet[f"I{row}"] = get_transaction_payment_date(txn)
 
             for col in range(1, 10):
                 worksheet.cell(row=row, column=col).border = border
@@ -715,15 +786,16 @@ class AuctionTransactionReportView(View):
         pdf.cell(0, 10, "DETAILED TRANSACTIONS", ln=True)
 
         columns = [
-            ("ID", 12, 8),
-            ("Source ID", 28, 14),
-            ("Name", 42, 22),
-            ("Type", 24, 12),
-            ("Item", 42, 22),
-            ("Token", 18, 8),
-            ("Price", 28, 14),
-            ("Status", 24, 10),
-            ("Date", 34, 16),
+            ("ID", 10, 8),
+            ("Source ID", 22, 14),
+            ("Name", 48, 20),
+            ("Type", 18, 12),
+            ("Item", 44, 20),
+            ("Token", 14, 8),
+            ("Price", 24, 14),
+            ("Status", 20, 10),
+            ("Receipt", 24, 14),
+            ("Payment Date", 30, 16),
         ]
         draw_pdf_table_header(pdf, columns)
 
@@ -740,7 +812,8 @@ class AuctionTransactionReportView(View):
                     txn.token_number,
                     f"Rs. {txn.price}",
                     txn.payment_status,
-                    txn.created_at.strftime("%Y-%m-%d %H:%M"),
+                    get_transaction_receipt_no(txn),
+                    get_transaction_payment_date(txn),
                 ],
             )
 
@@ -895,15 +968,20 @@ class AuctionPaymentStatusReportView(View):
 
     def get_json_report(self):
         data = self.get_report_data()
-        serialized_transactions = AuctionTransactionDetailReportSerializer(
-            data["transactions"],
-            many=True,
-        ).data
         store_auction_report_snapshot(data, self.payment_status_value)
+        limit, offset = get_limit_offset(self.request)
+        transaction_count = data["transactions"].count()
+        paged_transactions = data["transactions"][offset : offset + limit]
+        serialized_transactions = AuctionTransactionDetailReportSerializer(paged_transactions, many=True).data
         payload = {
             "summary": data["summary"],
             "payment_status_breakdown": data["payment_status_breakdown"],
             "transactions": serialized_transactions,
+            "pagination": {
+                "count": transaction_count,
+                "limit": limit,
+                "offset": offset,
+            },
         }
         return HttpResponse(
             json.dumps(payload, default=str),
@@ -961,7 +1039,7 @@ class AuctionPaymentStatusReportView(View):
                 "Token Number",
                 "Price",
                 "Payment Status",
-                "Date",
+                "Payment Date",
             ]
         )
 
@@ -976,7 +1054,7 @@ class AuctionPaymentStatusReportView(View):
                     txn.token_number,
                     f"Rs. {txn.price}",
                     txn.payment_status,
-                    txn.created_at.strftime("%Y-%m-%d %H:%M"),
+                    get_transaction_payment_date(txn),
                 ]
             )
 
@@ -1063,15 +1141,16 @@ class AuctionPaymentStatusReportView(View):
         pdf.cell(0, 8, f"{status_label} TRANSACTION DETAILS", ln=True)
 
         detail_columns = [
-            ("ID", 12, 8),
-            ("Source ID", 28, 14),
-            ("Name", 42, 22),
-            ("Type", 24, 12),
-            ("Item", 42, 22),
-            ("Token", 18, 8),
-            ("Price", 28, 14),
-            ("Status", 24, 10),
-            ("Date", 34, 16),
+            ("ID", 10, 8),
+            ("Source ID", 22, 14),
+            ("Name", 48, 20),
+            ("Type", 18, 12),
+            ("Item", 44, 20),
+            ("Token", 14, 8),
+            ("Price", 24, 14),
+            ("Status", 20, 10),
+            ("Receipt", 24, 14),
+            ("Payment Date", 30, 16),
         ]
         draw_pdf_table_header(pdf, detail_columns)
 
@@ -1088,7 +1167,8 @@ class AuctionPaymentStatusReportView(View):
                     txn.token_number,
                     f"Rs. {txn.price}",
                     txn.payment_status,
-                    txn.created_at.strftime("%Y-%m-%d %H:%M"),
+                    get_transaction_receipt_no(txn),
+                    get_transaction_payment_date(txn),
                 ],
             )
 

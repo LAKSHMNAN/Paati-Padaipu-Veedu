@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchAuctionTransactionReport, getAuctionTransactionReportUrl } from "../services/api";
 
+const PAGE_SIZE = 10;
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 const amount = (value) => Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+const formatReceiptDate = (value) => {
+  if (!value) return "-";
+  const [year, month, day] = String(value).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
+};
 const paymentStatusBadge = (status) => (
   <span className={`payment-status payment-status--${String(status || "").toLowerCase()}`}>
     {status || "-"}
@@ -22,6 +28,7 @@ export default function AuctionReports() {
   const [report, setReport] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pagination, setPagination] = useState({ count: 0, limit: PAGE_SIZE, offset: 0 });
 
   const summary = report?.summary || {};
   const transactions = report?.transactions || [];
@@ -34,21 +41,30 @@ export default function AuctionReports() {
     [activeStatus],
   );
 
-  const reportLabel = isSearchReport ? "Matching" : activeLabel;
+  const countCardLabel = isSearchReport ? "Total Count" : `${activeLabel} Count`;
+  const amountCardLabel = isSearchReport ? "Total Amount" : `${activeLabel} Amount`;
   const statusCount = isSearchReport ? summary.total_transactions : summary.status_count;
   const statusAmount = isSearchReport ? summary.total_amount : summary.status_amount;
   const totalCardLabel = isSearchReport ? "Paid Amount" : "Total Transactions";
   const totalCardValue = isSearchReport ? money(summary.total_paid_amount) : summary.total_transactions ?? 0;
   const otherLabel = isSearchReport ? "Unpaid" : summary.other_label || "Other";
   const otherAmount = isSearchReport ? summary.total_unpaid_amount : summary.other_amount;
+  const firstRecord = pagination.count === 0 ? 0 : pagination.offset + 1;
+  const lastRecord = Math.min(pagination.offset + transactions.length, pagination.count);
+  const canGoPrevious = pagination.offset > 0;
+  const canGoNext = pagination.offset + pagination.limit < pagination.count;
 
-  const loadReport = async (nextSearch = appliedSearch) => {
+  const loadReport = async (nextSearch = appliedSearch, nextOffset = pagination.offset) => {
     setIsLoading(true);
     setError("");
     try {
       const reportStatus = nextSearch ? "" : activeStatus;
-      const data = await fetchAuctionTransactionReport(reportStatus, nextSearch);
+      const data = await fetchAuctionTransactionReport(reportStatus, nextSearch, {
+        limit: PAGE_SIZE,
+        offset: nextOffset,
+      });
       setReport(data);
+      setPagination(data.pagination || { count: data.transactions?.length || 0, limit: PAGE_SIZE, offset: nextOffset });
     } catch (loadError) {
       setError(loadError.response?.data?.detail || "Unable to load auction report.");
       setReport(null);
@@ -58,20 +74,20 @@ export default function AuctionReports() {
   };
 
   useEffect(() => {
-    loadReport();
+    loadReport(appliedSearch, 0);
   }, [activeStatus]);
 
   const handleSearch = async (event) => {
     event.preventDefault();
     const nextSearch = search.trim();
     setAppliedSearch(nextSearch);
-    await loadReport(nextSearch);
+    await loadReport(nextSearch, 0);
   };
 
   const clearSearch = async () => {
     setSearch("");
     setAppliedSearch("");
-    await loadReport("");
+    await loadReport("", 0);
   };
 
   const openExport = (format) => {
@@ -132,11 +148,11 @@ export default function AuctionReports() {
 
       <div className="dashboard-grid report-summary-grid">
         <article className="metric-card metric-card--green">
-          <span>{reportLabel} Count</span>
+          <span>{countCardLabel}</span>
           <strong>{statusCount ?? 0}</strong>
         </article>
         <article className="metric-card metric-card--gold">
-          <span>{reportLabel} Amount</span>
+          <span>{amountCardLabel}</span>
           <strong>{money(statusAmount)}</strong>
         </article>
         <article className="metric-card metric-card--blue">
@@ -162,7 +178,7 @@ export default function AuctionReports() {
               <th>Price (Rs)</th>
               <th>Status</th>
               {showReceiptColumn ? <th>Receipt</th> : null}
-              <th>Date</th>
+              <th>Payment Date</th>
             </tr>
           </thead>
           <tbody>
@@ -184,18 +200,41 @@ export default function AuctionReports() {
                   <td>{amount(transaction.price)}</td>
                   <td>{paymentStatusBadge(transaction.payment_status)}</td>
                   {showReceiptColumn ? <td>{transaction.receipt_no || "-"}</td> : null}
-                  <td>{transaction.created_at ? new Date(transaction.created_at).toLocaleString("en-IN") : "-"}</td>
+                  <td>{formatReceiptDate(transaction.receipt_date)}</td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td colSpan={reportColumnCount} className="empty-state">
-                  No {reportLabel.toLowerCase()} auction transactions found.
+                  No {isSearchReport ? "searched" : activeLabel.toLowerCase()} auction transactions found.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        <div className="pagination-bar">
+          <span>
+            Showing {firstRecord}-{lastRecord} of {pagination.count}
+          </span>
+          <div className="pagination-actions">
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => loadReport(appliedSearch, Math.max(pagination.offset - pagination.limit, 0))}
+              disabled={isLoading || !canGoPrevious}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => loadReport(appliedSearch, pagination.offset + pagination.limit)}
+              disabled={isLoading || !canGoNext}
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   );

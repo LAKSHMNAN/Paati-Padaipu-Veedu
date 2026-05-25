@@ -28,6 +28,7 @@ class AuctionTransactionDetailReportSerializer(serializers.ModelSerializer):
     non_member_id = serializers.CharField(source="relative.non_member_id", read_only=True, allow_null=True)
     item_name = serializers.CharField(source="item.auction_item_name", read_only=True)
     receipt_no = serializers.CharField(source="receipt.receipt_no", read_only=True, allow_null=True)
+    receipt_date = serializers.DateField(source="receipt.receipt_date", read_only=True, allow_null=True)
     source_type = serializers.SerializerMethodField()
 
     class Meta:
@@ -44,6 +45,7 @@ class AuctionTransactionDetailReportSerializer(serializers.ModelSerializer):
             "price",
             "payment_status",
             "receipt_no",
+            "receipt_date",
             "created_at",
         ]
 
