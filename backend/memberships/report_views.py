@@ -8,7 +8,7 @@ from django.db.models import Sum, Count, Q
 from django.http import HttpResponse
 from django.views import View
 
-from .models import AuctionReport, AuctionTransaction
+from .models import AuctionReport, AuctionTransaction, Donation
 from .report_serializers import (
     AuctionTransactionDetailReportSerializer,
     AuctionTransactionReportDataSerializer,
@@ -128,6 +128,29 @@ def get_transaction_source_name(transaction):
 
 def get_transaction_source_type(transaction):
     return "Member" if transaction.member else "Non-Member"
+
+
+def get_donation_source_id(donation):
+    if donation.member:
+        return donation.member.member_id
+    if donation.relative:
+        return donation.relative.non_member_id
+    return "N/A"
+
+
+def get_filtered_donations(search=""):
+    queryset = Donation.objects.select_related("member", "relative").all()
+    if not search:
+        return queryset
+    return queryset.filter(
+        Q(donor_type__icontains=search)
+        | Q(member__member_id__icontains=search)
+        | Q(member__name__icontains=search)
+        | Q(relative__non_member_id__icontains=search)
+        | Q(relative__name__icontains=search)
+        | Q(donor_name__icontains=search)
+        | Q(phone__icontains=search)
+    )
 
 
 def get_transaction_payment_date(transaction):
@@ -1185,3 +1208,127 @@ class PaidAuctionTransactionReportView(AuctionPaymentStatusReportView):
 
 class UnpaidAuctionTransactionReportView(AuctionPaymentStatusReportView):
     payment_status_value = "Unpaid"
+
+
+class DonationReportView(View):
+    """Generate donation reports for member and non-member donors."""
+
+    def get_report_data(self):
+        search = self.request.GET.get("search", "").strip()
+        donations = get_filtered_donations(search)
+        aggregates = donations.aggregate(total_amount=Sum("amount"), donor_count=Count("id"))
+        member_aggregates = donations.filter(donor_type=Donation.DonorType.MEMBER).aggregate(
+            total_amount=Sum("amount"),
+            donor_count=Count("id"),
+        )
+        non_member_aggregates = donations.filter(donor_type=Donation.DonorType.NON_MEMBER).aggregate(
+            total_amount=Sum("amount"),
+            donor_count=Count("id"),
+        )
+        return {
+            "search": search,
+            "generated_at": datetime.now(),
+            "donations": donations,
+            "summary": {
+                "donor_count": aggregates["donor_count"] or 0,
+                "total_amount": aggregates["total_amount"] or Decimal("0.00"),
+                "member_count": member_aggregates["donor_count"] or 0,
+                "member_amount": member_aggregates["total_amount"] or Decimal("0.00"),
+                "non_member_count": non_member_aggregates["donor_count"] or 0,
+                "non_member_amount": non_member_aggregates["total_amount"] or Decimal("0.00"),
+            },
+        }
+
+    def get(self, request, *args, **kwargs):
+        format_type = request.GET.get("format", "pdf").lower()
+        if format_type != "pdf":
+            return HttpResponse(
+                json.dumps({"error": "Invalid format. Supported format: pdf"}),
+                content_type="application/json",
+                status=400,
+            )
+        return self.get_pdf_report()
+
+    def get_pdf_report(self):
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            return HttpResponse(
+                json.dumps({"error": "fpdf2 not installed. Install with: pip install fpdf2"}),
+                content_type="application/json",
+                status=400,
+            )
+
+        data = self.get_report_data()
+        summary = data["summary"]
+        donations = data["donations"]
+
+        pdf = FPDF(orientation="L")
+        pdf.add_page()
+        pdf.set_font("Arial", "B", size=16)
+        pdf.cell(0, 10, "DONATION REPORT", ln=True, align="C")
+        pdf.ln(4)
+
+        pdf.set_font("Arial", size=10)
+        pdf.cell(0, 8, f"Generated: {data['generated_at'].strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
+        if data["search"]:
+            pdf.cell(0, 8, f"Search: {data['search']}", ln=True)
+        pdf.ln(4)
+
+        pdf.set_font("Arial", "B", size=12)
+        pdf.cell(0, 8, "SUMMARY", ln=True)
+        summary_columns = [
+            ("Total Donors", 38, 16),
+            ("Total Amount", 42, 16),
+            ("Member Donors", 38, 16),
+            ("Member Amount", 42, 16),
+            ("Non-Member Donors", 46, 18),
+            ("Non-Member Amount", 50, 18),
+        ]
+        draw_pdf_table_header(pdf, summary_columns)
+        draw_pdf_table_row(
+            pdf,
+            summary_columns,
+            [
+                summary["donor_count"],
+                f"Rs. {summary['total_amount']}",
+                summary["member_count"],
+                f"Rs. {summary['member_amount']}",
+                summary["non_member_count"],
+                f"Rs. {summary['non_member_amount']}",
+            ],
+        )
+        pdf.ln(5)
+
+        pdf.set_font("Arial", "B", size=12)
+        pdf.cell(0, 8, "DONATION DETAILS", ln=True)
+        detail_columns = [
+            ("ID", 12, 8),
+            ("Donor Type", 28, 14),
+            ("Member/Non-member ID", 42, 18),
+            ("Donor Name", 62, 26),
+            ("Phone", 32, 12),
+            ("Amount", 34, 14),
+            ("Created", 38, 18),
+        ]
+        draw_pdf_table_header(pdf, detail_columns)
+
+        for donation in donations:
+            draw_pdf_table_row(
+                pdf,
+                detail_columns,
+                [
+                    donation.id,
+                    donation.donor_type,
+                    get_donation_source_id(donation),
+                    donation.donor_name,
+                    donation.phone,
+                    f"Rs. {donation.amount}",
+                    donation.created_at.strftime("%Y-%m-%d"),
+                ],
+            )
+
+        pdf_bytes = normalize_pdf_output(pdf.output(dest="S"))
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'inline; filename="donation_report.pdf"'
+        return response

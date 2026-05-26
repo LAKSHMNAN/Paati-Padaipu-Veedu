@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import DataTable from "./DataTable";
-import { createItem, deleteItem, fetchCollection, translateAuctionItemName, updateItem } from "../services/api";
+import {
+  createItem,
+  deleteItem,
+  fetchCollection,
+  getDonationReportUrl,
+  translateAuctionItemName,
+  updateItem,
+} from "../services/api";
 
 const PAGE_SIZE = 10;
 
@@ -391,6 +398,10 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     setIsModalOpen(true);
   };
 
+  const handleOpenDonationReport = () => {
+    window.open(getDonationReportUrl("pdf", search), "_blank", "noopener,noreferrer");
+  };
+
   const renderForm = () => (
     <form className="record-form" onSubmit={handleSubmit}>
       {visibleFields.map((field) => {
@@ -612,6 +623,11 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
             <button type="button" className="create-action-button" onClick={handleOpenCreate}>
               <span className="create-action-button__icon">+</span>
               <span>{config.createButtonLabel || `Create ${config.title}`}</span>
+            </button>
+          ) : null}
+          {config.endpoint === "donations" ? (
+            <button type="button" className="ghost-button" onClick={handleOpenDonationReport}>
+              PDF
             </button>
           ) : null}
         </div>

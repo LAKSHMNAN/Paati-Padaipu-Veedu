@@ -27,6 +27,7 @@ from .views import (
 )
 from .report_views import (
     AuctionTransactionReportView,
+    DonationReportView,
     PaidAuctionTransactionReportView,
     UnpaidAuctionTransactionReportView,
 )
@@ -56,6 +57,7 @@ urlpatterns = [
     path("donations/", DonationListCreateView.as_view(), name="donation-list"),
     path("donations/<int:pk>/", DonationDetailView.as_view(), name="donation-detail"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("reports/donations/", DonationReportView.as_view(), name="donation-report"),
     path("reports/auction-transactions/", AuctionTransactionReportView.as_view(), name="auction-transaction-report"),
     path(
         "reports/auction-transactions/paid/",

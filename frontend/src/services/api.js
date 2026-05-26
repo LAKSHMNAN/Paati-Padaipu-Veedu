@@ -102,6 +102,14 @@ export const getAuctionTransactionReportUrl = (status = "", format = "csv", sear
   return `${api.defaults.baseURL}/reports/auction-transactions/${statusPath}?${params.toString()}`;
 };
 
+export const getDonationReportUrl = (format = "pdf", search = "") => {
+  const params = new URLSearchParams({ format });
+  if (search) {
+    params.set("search", search);
+  }
+  return `${api.defaults.baseURL}/reports/donations/?${params.toString()}`;
+};
+
 export const translateAuctionItemName = async (auctionItemName) => {
   const { data } = await api.post("/auction-items/translate/", {
     auction_item_name: auctionItemName,

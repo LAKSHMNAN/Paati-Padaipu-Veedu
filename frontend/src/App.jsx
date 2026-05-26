@@ -24,6 +24,7 @@ export default function App() {
   const [relatives, setRelatives] = useState([]);
   const [auctionItems, setAuctionItems] = useState([]);
   const [activeModule, setActiveModule] = useState("dashboard");
+  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [pendingAuctionTransaction, setPendingAuctionTransaction] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -566,8 +567,21 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell ${isSidebarHidden ? "app-shell--menu-hidden" : ""}`}>
+      {isSidebarHidden ? (
+        <button
+          type="button"
+          className="menu-toggle menu-toggle--floating"
+          onClick={() => setIsSidebarHidden(false)}
+        >
+          Show Menu
+        </button>
+      ) : null}
+
+      <aside className="sidebar" aria-hidden={isSidebarHidden}>
+        <button type="button" className="menu-toggle" onClick={() => setIsSidebarHidden(true)}>
+          Hide Menu
+        </button>
         <p className="eyebrow">Production Console</p>
         <h1>Shri Udayammai Paati Padaippu Veedu</h1>
         <p className="sidebar-copy">
@@ -597,41 +611,29 @@ export default function App() {
       </aside>
 
       <main className="content">
-        <section className="hero">
-          <div>
-            <p className="eyebrow">{isDashboardView ? "Dashboard" : "Active Module"}</p>
-            <h2>
-              {isDashboardView
-                ? "Track auction, donation, member, and receipt totals in one place."
-                : "Keep member records, donations, receipts, auction transactions, and deposits in sync."}
-            </h2>
-            <p>
-              {isDashboardView
-                ? "This summary screen mirrors your attached layout and acts as the landing page before opening the working modules."
-                : "Each module has its own dedicated workspace for search, creation, updates, and safe deletes."}
-            </p>
-          </div>
-        </section>
-
         {isDashboardView ? (
-          <section className="dashboard-stage">
-            <DashboardCards dashboard={dashboard} />
-            <div className="dashboard-stage__actions">
-              <button type="button" onClick={() => setActiveModule("member-data")}>
-                Open Members Data
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="module-stage">
-            <div className="module-stage__header">
-              <p className="eyebrow">Active Module</p>
-              <h2>{activeSection.title}</h2>
-              <p>{activeSection.description}</p>
-            </div>
+          <>
+            <section className="hero">
+              <div>
+                <p className="eyebrow">Dashboard</p>
+                <h2>Totals overview</h2>
+                <p>Track auction, donation, member, and receipt totals before opening a working module.</p>
+              </div>
+            </section>
 
+            <section className="dashboard-stage">
+              <DashboardCards dashboard={dashboard} />
+              <div className="dashboard-stage__actions">
+                <button type="button" onClick={() => setActiveModule("member-data")}>
+                  Open Members Data
+                </button>
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="module-stage" aria-label={activeSection.title}>
             {activeSection.nestedSections ? (
-              <>
+              <div className="module-stack">
                 {activeSection.nestedSections.map((section) => (
                   <ResourceSection
                     key={section.endpoint}
@@ -640,7 +642,7 @@ export default function App() {
                     onDataChange={loadLookups}
                   />
                 ))}
-              </>
+              </div>
             ) : activeSection.endpoint === "auction-transactions" ? (
               <AuctionTransactionForm
                 config={activeSection}
