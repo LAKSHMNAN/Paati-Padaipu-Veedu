@@ -2,7 +2,7 @@ const formatCurrency = (value) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
 export default function DashboardCards({ dashboard }) {

@@ -4,6 +4,7 @@ import DataTable from "./DataTable";
 import { createItem, deleteItem, fetchCollection, updateItem } from "../services/api";
 
 const PAGE_SIZE = 10;
+const money = (value) => `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 
 const INITIAL_ITEM_FORM_STATE = {
   auction_item_id: "",
@@ -239,7 +240,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
         member: isMember ? selectedSource.member_id : null,
         relative: isMember ? null : selectedSource.id,
         token_number: itemFormState.token_number,
-        price: itemFormState.price,
+        price: String(Math.round(Number(itemFormState.price || 0))),
         payment_status: "Unpaid",
         receipt: null,
       };
@@ -350,7 +351,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
                 </div>
                 <div className="record-detail">
                   <span>Price</span>
-                  <strong>Rs. {selectedItem.price || "-"}</strong>
+                  <strong>{selectedItem.price ? money(selectedItem.price) : "-"}</strong>
                 </div>
               </div>
 
@@ -551,7 +552,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
                         value={itemFormState.price}
                         onChange={handleItemFormChange}
                         required
-                        step="0.01"
+                        step="1"
                         placeholder="Enter price"
                       />
                     </label>

@@ -8,8 +8,8 @@ import AuthPage from "./components/AuthPage";
 import ModuleIcon from "./components/ModuleIcon";
 import { fetchCollection, fetchCurrentUser, fetchDashboard, logoutUser } from "./services/api";
 
-const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
-const amount = (value) => Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+const money = (value) => `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+const amount = (value) => Math.round(Number(value || 0)).toLocaleString("en-IN");
 const LOOKUP_LIMIT = 1000;
 const paymentStatusBadge = (status) => (
   <span className={`payment-status payment-status--${String(status || "").toLowerCase()}`}>
@@ -339,7 +339,7 @@ export default function App() {
         { name: "primary_phone_number", label: "Primary Phone Number", readOnly: true },
         { name: "native_place", label: "Native Place", readOnly: true },
         { name: "token_number", label: "Token Number", type: "number", required: true },
-        { name: "price", label: "Price", type: "number", required: true, step: "0.01" },
+        { name: "price", label: "Price", type: "number", required: true, step: "1" },
         {
           name: "payment_status",
           label: "Payment Status",
@@ -403,7 +403,7 @@ export default function App() {
       searchPlaceholder: "Search by receipt number",
       fields: [
         { name: "receipt", label: "Receipt", type: "select", optionsKey: "receipts", required: true },
-        { name: "amount", label: "Amount", type: "number", required: true, step: "0.01" },
+        { name: "amount", label: "Amount", type: "number", required: true, step: "1" },
         { name: "date", label: "Date", type: "date", required: true },
       ],
       columns: [
@@ -459,7 +459,7 @@ export default function App() {
         },
         { name: "member", label: "Member", type: "select", optionsKey: "members" },
         { name: "relative", label: "Relative", type: "select", optionsKey: "relatives" },
-        { name: "amount", label: "Amount", type: "number", required: true, step: "0.01" },
+        { name: "amount", label: "Amount", type: "number", required: true, step: "1" },
       ],
       renderPreview: (formState, options) => {
         const member = findMeta(options.members || [], formState.member);
@@ -508,7 +508,7 @@ export default function App() {
           required: true,
           valueFromItem: (item) => (item.member ? `member:${item.member}` : item.relative ? `relative:${item.relative}` : ""),
         },
-        { name: "amount", label: "Amount", type: "number", required: true, step: "0.01" },
+        { name: "amount", label: "Amount", type: "number", required: true, step: "1" },
       ],
       renderPreview: (formState, options) => {
         const source = findMeta(options.donationSources || [], formState.donation_source);
@@ -535,7 +535,7 @@ export default function App() {
         { key: "source_name", label: "Source" },
         { key: "donor_name", label: "Donor Name" },
         { key: "phone", label: "Phone" },
-        { key: "amount", label: "Amount" },
+        { key: "amount", label: "Amount", render: (row) => money(row.amount) },
       ],
     },
   ];

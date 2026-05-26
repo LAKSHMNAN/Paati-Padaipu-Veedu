@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchAuctionTransactionReport, getAuctionTransactionReportUrl } from "../services/api";
 
 const PAGE_SIZE = 10;
-const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
-const amount = (value) => Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+const money = (value) => `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+const amount = (value) => Math.round(Number(value || 0)).toLocaleString("en-IN");
 const formatReceiptDate = (value) => {
   if (!value) return "-";
   const [year, month, day] = String(value).split("-");

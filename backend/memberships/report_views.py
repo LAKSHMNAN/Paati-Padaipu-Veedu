@@ -1,7 +1,7 @@
 import csv
 import json
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO, StringIO
 
 from django.db.models import Sum, Count, Q
@@ -108,6 +108,14 @@ def get_limit_offset(request):
 
 def money_decimal(value):
     return float(value or Decimal("0.00"))
+
+
+def whole_rupees(value):
+    return f"{Decimal(value or 0).quantize(Decimal('1'), rounding=ROUND_HALF_UP):,}"
+
+
+def rupees(value):
+    return f"Rs. {whole_rupees(value)}"
 
 
 def get_transaction_source_id(transaction):
@@ -260,7 +268,7 @@ def create_payment_status_excel_workbook(data, status_label):
         elif "Unpaid" in label:
             value_cell.fill = warning_fill
         if value_type == "money":
-            value_cell.number_format = '"Rs." #,##0.00'
+            value_cell.number_format = '"Rs." #,##0'
         elif value_type == "percent":
             value_cell.number_format = "0.00%"
         for style_col in range(col, col + 3):
@@ -283,7 +291,7 @@ def create_payment_status_excel_workbook(data, status_label):
         worksheet.cell(row=row, column=1).value = item["payment_status"]
         worksheet.cell(row=row, column=2).value = item["count"]
         worksheet.cell(row=row, column=3).value = money_decimal(item["total_amount"])
-        worksheet.cell(row=row, column=3).number_format = '"Rs." #,##0.00'
+        worksheet.cell(row=row, column=3).number_format = '"Rs." #,##0'
         worksheet.cell(row=row, column=4).value = item["percentage"] / 100
         worksheet.cell(row=row, column=4).number_format = "0.00%"
         apply_excel_body_style(worksheet, row, len(breakdown_headers), border)
@@ -328,7 +336,7 @@ def create_payment_status_excel_workbook(data, status_label):
         ]
         for col, value in enumerate(values, 1):
             worksheet.cell(row=row, column=col).value = value
-        worksheet.cell(row=row, column=7).number_format = '"Rs." #,##0.00'
+        worksheet.cell(row=row, column=7).number_format = '"Rs." #,##0'
         apply_excel_body_style(worksheet, row, len(transaction_headers), border)
         row += 1
 
@@ -547,14 +555,14 @@ class AuctionTransactionReportView(View):
         # Summary statistics
         writer.writerow(["SUMMARY"])
         writer.writerow(["Total Transactions", summary["total_transactions"]])
-        writer.writerow(["Total Amount", f"Rs. {summary['total_amount']}"])
-        writer.writerow(["Paid Amount", f"Rs. {summary['total_paid_amount']}"])
-        writer.writerow(["Unpaid Amount", f"Rs. {summary['total_unpaid_amount']}"])
+        writer.writerow(["Total Amount", rupees(summary["total_amount"])])
+        writer.writerow(["Paid Amount", rupees(summary["total_paid_amount"])])
+        writer.writerow(["Unpaid Amount", rupees(summary["total_unpaid_amount"])])
         writer.writerow(["Paid Count", summary["paid_count"]])
         writer.writerow(["Unpaid Count", summary["unpaid_count"]])
         writer.writerow(["Paid Percentage", f"{summary['paid_percentage']}%"])
         writer.writerow(["Unpaid Percentage", f"{summary['unpaid_percentage']}%"])
-        writer.writerow(["Average Transaction Amount", f"Rs. {summary['average_transaction_amount']}"])
+        writer.writerow(["Average Transaction Amount", rupees(summary["average_transaction_amount"])])
         writer.writerow([])
 
         # Payment status breakdown
@@ -564,7 +572,7 @@ class AuctionTransactionReportView(View):
             writer.writerow([
                 item["payment_status"],
                 item["count"],
-                f"Rs. {item['total_amount']}",
+                rupees(item["total_amount"]),
                 f"{item['percentage']}%",
             ])
         writer.writerow([])
@@ -584,7 +592,7 @@ class AuctionTransactionReportView(View):
                 get_transaction_source_type(txn),
                 txn.item.auction_item_name,
                 txn.token_number,
-                f"Rs. {txn.price}",
+                rupees(txn.price),
                 txn.payment_status,
                 get_transaction_payment_date(txn),
             ])
@@ -781,12 +789,12 @@ class AuctionTransactionReportView(View):
 
         summary_items = [
             f"Total Transactions: {summary['total_transactions']}",
-            f"Total Amount: Rs. {summary['total_amount']}",
-            f"Paid Amount: Rs. {summary['total_paid_amount']}",
-            f"Unpaid Amount: Rs. {summary['total_unpaid_amount']}",
+            f"Total Amount: {rupees(summary['total_amount'])}",
+            f"Paid Amount: {rupees(summary['total_paid_amount'])}",
+            f"Unpaid Amount: {rupees(summary['total_unpaid_amount'])}",
             f"Paid Count: {summary['paid_count']} ({summary['paid_percentage']}%)",
             f"Unpaid Count: {summary['unpaid_count']} ({summary['unpaid_percentage']}%)",
-            f"Average Amount: Rs. {summary['average_transaction_amount']}",
+            f"Average Amount: {rupees(summary['average_transaction_amount'])}",
         ]
 
         for item in summary_items:
@@ -800,7 +808,7 @@ class AuctionTransactionReportView(View):
         pdf.set_font("Arial", size=10)
 
         for item in data["payment_status_breakdown"]:
-            pdf.cell(0, 8, f"{item['payment_status']}: {item['count']} transactions (Rs. {item['total_amount']}) - {item['percentage']}%", ln=True)
+            pdf.cell(0, 8, f"{item['payment_status']}: {item['count']} transactions ({rupees(item['total_amount'])}) - {item['percentage']}%", ln=True)
 
         pdf.ln(5)
 
@@ -833,7 +841,7 @@ class AuctionTransactionReportView(View):
                     get_transaction_source_type(txn),
                     txn.item.auction_item_name,
                     txn.token_number,
-                    f"Rs. {txn.price}",
+                    rupees(txn.price),
                     txn.payment_status,
                     get_transaction_receipt_no(txn),
                     get_transaction_payment_date(txn),
@@ -1029,11 +1037,11 @@ class AuctionPaymentStatusReportView(View):
 
         writer.writerow(["SUMMARY"])
         writer.writerow(["Total Transactions (All)", summary["total_transactions"]])
-        writer.writerow(["Total Amount (All)", f"Rs. {summary['total_amount']}"])
+        writer.writerow(["Total Amount (All)", rupees(summary["total_amount"])])
         writer.writerow([f"{status_label} Count", summary["status_count"]])
-        writer.writerow([f"{status_label} Amount", f"Rs. {summary['status_amount']}"])
+        writer.writerow([f"{status_label} Amount", rupees(summary["status_amount"])])
         writer.writerow([f"Other ({summary['other_label']}) Count", summary["other_count"]])
-        writer.writerow([f"Other ({summary['other_label']}) Amount", f"Rs. {summary['other_amount']}"])
+        writer.writerow([f"Other ({summary['other_label']}) Amount", rupees(summary["other_amount"])])
         writer.writerow(["Paid Percentage", f"{summary['paid_percentage']}%"])
         writer.writerow(["Unpaid Percentage", f"{summary['unpaid_percentage']}%"])
         writer.writerow([])
@@ -1045,7 +1053,7 @@ class AuctionPaymentStatusReportView(View):
                 [
                     item["payment_status"],
                     item["count"],
-                    f"Rs. {item['total_amount']}",
+                    rupees(item["total_amount"]),
                     f"{item['percentage']}%",
                 ]
             )
@@ -1075,7 +1083,7 @@ class AuctionPaymentStatusReportView(View):
                     get_transaction_source_type(txn),
                     txn.item.auction_item_name,
                     txn.token_number,
-                    f"Rs. {txn.price}",
+                    rupees(txn.price),
                     txn.payment_status,
                     get_transaction_payment_date(txn),
                 ]
@@ -1150,9 +1158,9 @@ class AuctionPaymentStatusReportView(View):
             [
                 summary["status"],
                 summary["status_count"],
-                f"Rs. {summary['status_amount']}",
+                rupees(summary["status_amount"]),
                 summary["total_transactions"],
-                f"Rs. {summary['total_amount']}",
+                rupees(summary["total_amount"]),
                 f"{summary['paid_percentage']}%",
                 f"{summary['unpaid_percentage']}%",
             ],
@@ -1188,7 +1196,7 @@ class AuctionPaymentStatusReportView(View):
                     get_transaction_source_type(txn),
                     txn.item.auction_item_name,
                     txn.token_number,
-                    f"Rs. {txn.price}",
+                    rupees(txn.price),
                     txn.payment_status,
                     get_transaction_receipt_no(txn),
                     get_transaction_payment_date(txn),
@@ -1291,11 +1299,11 @@ class DonationReportView(View):
             summary_columns,
             [
                 summary["donor_count"],
-                f"Rs. {summary['total_amount']}",
+                rupees(summary["total_amount"]),
                 summary["member_count"],
-                f"Rs. {summary['member_amount']}",
+                rupees(summary["member_amount"]),
                 summary["non_member_count"],
-                f"Rs. {summary['non_member_amount']}",
+                rupees(summary["non_member_amount"]),
             ],
         )
         pdf.ln(5)
@@ -1323,7 +1331,7 @@ class DonationReportView(View):
                     get_donation_source_id(donation),
                     donation.donor_name,
                     donation.phone,
-                    f"Rs. {donation.amount}",
+                    rupees(donation.amount),
                     donation.created_at.strftime("%Y-%m-%d"),
                 ],
             )

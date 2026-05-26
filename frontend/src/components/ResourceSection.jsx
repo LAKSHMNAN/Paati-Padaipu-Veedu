@@ -12,12 +12,27 @@ import {
 } from "../services/api";
 
 const PAGE_SIZE = 10;
+const money = (value) => `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 
 const buildInitialState = (fields) =>
   fields.reduce((acc, field) => {
     acc[field.name] = field.defaultValue ?? "";
     return acc;
   }, {});
+
+const normalizeWholeRupeeFields = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+  return Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => {
+      if ((key === "amount" || key === "price") && value !== "" && value !== null && value !== undefined) {
+        return [key, String(Math.round(Number(value || 0)))];
+      }
+      return [key, value];
+    }),
+  );
+};
 
 function SearchableSelect({ field, options, value, onChange, disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -307,7 +322,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     setError("");
     setFeedback("");
     try {
-      const payload = config.preparePayload ? config.preparePayload(formState) : formState;
+      const payload = normalizeWholeRupeeFields(config.preparePayload ? config.preparePayload(formState) : formState);
       if (editingId) {
         await updateItem(config.endpoint, editingId, payload);
         setFeedback(`${config.title} updated.`);
@@ -661,7 +676,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
             {config.detailFields.map((field) => (
               <article className="record-detail" key={field.key}>
                 <span>{field.label}</span>
-                <strong>{selectedItem[field.key] || "-"}</strong>
+                <strong>{field.render ? field.render(selectedItem) : selectedItem[field.key] || "-"}</strong>
               </article>
             ))}
           </div>
@@ -706,7 +721,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
             </article>
             <article className="record-detail">
               <span>Amount</span>
-              <strong>{pendingAuctionTransaction.price || "-"}</strong>
+              <strong>{pendingAuctionTransaction.price ? money(pendingAuctionTransaction.price) : "-"}</strong>
             </article>
             <article className="record-detail">
               <span>Payment Status</span>
