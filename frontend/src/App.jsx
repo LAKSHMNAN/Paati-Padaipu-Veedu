@@ -108,7 +108,7 @@ export default function App() {
       relatives: relatives.map((relative) => ({
         value: relative.id,
         label: `${relative.non_member_id} - ${relative.name} - ${relative.phone_1}`,
-        searchText: [relative.non_member_id, relative.name, relative.phone_1, relative.phone_2, relative.type]
+        searchText: [relative.non_member_id, relative.name, relative.phone_1, relative.phone_2, relative.place, relative.type]
           .filter(Boolean)
           .join(" "),
         meta: relative,
@@ -137,6 +137,7 @@ export default function App() {
             relative.name,
             relative.phone_1,
             relative.phone_2,
+            relative.place,
             relative.type,
             "non-member",
           ]
@@ -221,6 +222,7 @@ export default function App() {
       { name: "name", label: "Name", required: true },
       { name: "phone_1", label: "Primary Phone", required: true },
       { name: "phone_2", label: "Secondary Phone" },
+      { name: "place", label: "Place" },
       {
         name: "type",
         label: "Type",
@@ -237,6 +239,7 @@ export default function App() {
       { key: "name", label: "Name" },
       { key: "phone_1", label: "Primary Phone" },
       { key: "phone_2", label: "Secondary Phone" },
+      { key: "place", label: "Place" },
       { key: "type", label: "Type" },
     ],
     detailFields: [
@@ -244,6 +247,7 @@ export default function App() {
       { key: "name", label: "Name" },
       { key: "phone_1", label: "Primary Phone" },
       { key: "phone_2", label: "Secondary Phone" },
+      { key: "place", label: "Place" },
       { key: "type", label: "Type" },
     ],
   };
@@ -370,7 +374,7 @@ export default function App() {
         { key: "source_id", label: "Member/Non member ID" },
         { key: "member_name", label: "Name" },
         { key: "primary_phone_number", label: "Primary Phone Number" },
-        { key: "native_place", label: "Native Place" },
+        { key: "native_place", label: "Place" },
         { key: "token_number", label: "Token" },
         { key: "item_name", label: "Item" },
         { key: "price", label: "Price (Rs)", render: (row) => amount(row.price) },
@@ -382,7 +386,7 @@ export default function App() {
         { key: "source_id", label: "Member/Non member ID" },
         { key: "member_name", label: "Name" },
         { key: "primary_phone_number", label: "Primary Phone Number" },
-        { key: "native_place", label: "Native Place" },
+        { key: "native_place", label: "Place" },
         { key: "token_number", label: "Token" },
         { key: "item_name", label: "Item" },
         { key: "price", label: "Price (Rs)", render: (row) => amount(row.price) },

@@ -42,6 +42,7 @@ class MembershipModelTests(TestCase):
         self.relative = Relative.objects.create(
             name="Guest One",
             phone_1="9011122233",
+            place="Karaikudi",
             type=Relative.RelativeType.GUEST,
         )
         self.admin_user = Registration.objects.create(
@@ -211,6 +212,36 @@ class MembershipModelTests(TestCase):
         self.assertEqual(txn.name, self.member.name)
         self.assertEqual(txn.primary_phone_number, self.member.primary_phone)
         self.assertEqual(txn.native_place, self.member.native_place)
+
+    def test_auction_transaction_api_uses_latest_member_place(self):
+        txn = AuctionTransaction.objects.create(
+            member=self.member,
+            token_number=1,
+            price=Decimal("1500.00"),
+            payment_status=AuctionTransaction.PaymentStatus.PAID,
+        )
+
+        self.member.native_place = Member.NativePlace.VENDANPATTI
+        self.member.save()
+
+        response = APIClient().get(f"/api/auction-transactions/{txn.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["native_place"], Member.NativePlace.VENDANPATTI)
+
+    def test_auction_transaction_api_uses_latest_non_member_place(self):
+        txn = AuctionTransaction.objects.create(
+            relative=self.relative,
+            token_number=1,
+            price=Decimal("700.00"),
+            payment_status=AuctionTransaction.PaymentStatus.PAID,
+        )
+
+        self.relative.place = "Madurai"
+        self.relative.save()
+
+        response = APIClient().get(f"/api/auction-transactions/{txn.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["native_place"], "Madurai")
 
     def test_auction_transaction_supports_non_member_relative(self):
         txn = AuctionTransaction.objects.create(

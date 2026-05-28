@@ -106,6 +106,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
         meta.non_member_id,
         meta.phone_1,
         meta.phone_2,
+        meta.place,
         meta.type,
         record.searchText,
       ];
@@ -501,8 +502,8 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
                       <strong>{selectedSourceIsMember ? selectedSource.primary_phone : selectedSource.phone_1}</strong>
                     </div>
                     <div className="record-detail">
-                      <span>{selectedSourceIsMember ? "Native Place" : "Non Member Type"}</span>
-                      <strong>{selectedSourceIsMember ? selectedSource.native_place : selectedSource.type}</strong>
+                      <span>{selectedSourceIsMember ? "Native Place" : "Place"}</span>
+                      <strong>{selectedSourceIsMember ? selectedSource.native_place : selectedSource.place || "-"}</strong>
                     </div>
                   </div>
 

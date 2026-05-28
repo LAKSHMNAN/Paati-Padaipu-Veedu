@@ -252,6 +252,7 @@ class Relative(TimeStampedModel):
     name = models.CharField(max_length=255)
     phone_1 = models.CharField(max_length=10, unique=True, validators=[phone_validator])
     phone_2 = models.CharField(max_length=10, blank=True, null=True, unique=True, validators=[phone_validator])
+    place = models.CharField(max_length=100, blank=True)
     type = models.CharField(max_length=20, choices=RelativeType.choices)
 
     class Meta:

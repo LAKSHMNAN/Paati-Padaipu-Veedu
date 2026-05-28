@@ -159,6 +159,7 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
     source_id = serializers.SerializerMethodField()
     relative_name = serializers.CharField(source="relative.name", read_only=True)
     source_type = serializers.SerializerMethodField()
+    native_place = serializers.SerializerMethodField()
     item_name = serializers.CharField(source="item.auction_item_name", read_only=True)
     receipt_no = serializers.CharField(source="receipt.receipt_no", read_only=True, allow_null=True)
 
@@ -229,6 +230,13 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
 
     def get_source_type(self, obj):
         return "Member" if obj.member else "Non-Member" if obj.relative else None
+
+    def get_native_place(self, obj):
+        if obj.member:
+            return obj.member.native_place
+        if obj.relative:
+            return obj.relative.place
+        return ""
 
     def _raise_as_drf_validation_error(self, error):
         detail = getattr(error, "message_dict", None) or getattr(error, "messages", None) or str(error)

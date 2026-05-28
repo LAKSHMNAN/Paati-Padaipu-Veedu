@@ -239,7 +239,9 @@ class AuctionTransactionListCreateView(BaseListCreateView):
             | Q(relative__non_member_id__icontains=query)
             | Q(relative__name__icontains=query)
             | Q(relative__phone_1__icontains=query)
+            | Q(relative__place__icontains=query)
             | Q(member__primary_phone__icontains=query)
+            | Q(member__native_place__icontains=query)
             | Q(primary_phone_number__icontains=query)
             | Q(native_place__icontains=query)
             | Q(token_number__icontains=query)
@@ -269,6 +271,7 @@ class RelativeListCreateView(BaseListCreateView):
             | Q(name__icontains=query)
             | Q(phone_1__icontains=query)
             | Q(phone_2__icontains=query)
+            | Q(place__icontains=query)
             | Q(type__icontains=query)
         )
 

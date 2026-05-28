@@ -52,8 +52,8 @@ class AuctionReportAdmin(admin.ModelAdmin):
 
 @admin.register(Relative)
 class RelativeAdmin(admin.ModelAdmin):
-    list_display = ("non_member_id", "name", "phone_1", "type")
-    search_fields = ("non_member_id", "name", "phone_1", "phone_2")
+    list_display = ("non_member_id", "name", "phone_1", "place", "type")
+    search_fields = ("non_member_id", "name", "phone_1", "phone_2", "place")
 
 
 @admin.register(Deposit)
