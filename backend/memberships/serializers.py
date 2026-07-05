@@ -249,6 +249,12 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
             self._raise_as_drf_validation_error(error)
 
     def update(self, instance, validated_data):
+        if "receipt" in validated_data and "payment_status" not in validated_data:
+            validated_data["payment_status"] = (
+                AuctionTransaction.PaymentStatus.PAID
+                if validated_data["receipt"]
+                else AuctionTransaction.PaymentStatus.UNPAID
+            )
         try:
             return super().update(instance, validated_data)
         except DjangoValidationError as error:

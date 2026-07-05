@@ -66,6 +66,11 @@ export const updateItem = async (endpoint, id, payload) => {
   return data;
 };
 
+export const patchItem = async (endpoint, id, payload) => {
+  const { data } = await api.patch(`/${endpoint}/${id}/`, payload);
+  return data;
+};
+
 export const deleteItem = async (endpoint, id) => {
   await api.delete(`/${endpoint}/${id}/`);
 };

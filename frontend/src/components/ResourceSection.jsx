@@ -7,6 +7,7 @@ import {
   deleteItem,
   fetchCollection,
   getDonationReportUrl,
+  patchItem,
   translateAuctionItemName,
   updateItem,
 } from "../services/api";
@@ -329,7 +330,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
       } else {
         const createdItem = await createItem(config.endpoint, payload);
         if (config.endpoint === "receipts" && pendingAuctionTransaction && formState.receipt_no) {
-          await updateItem("auction-transactions", pendingAuctionTransaction.id, {
+          await patchItem("auction-transactions", pendingAuctionTransaction.id, {
             payment_status: "Paid",
             receipt: formState.receipt_no,
           });
@@ -350,6 +351,25 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
       // Check if error is related to quantity limit
       if (detailString.includes("The requested item is no longer available")) {
         setQuantityPopup(true);
+      } else if (
+        detailString.includes("This receipt number is already used so use another receipt number")
+        && config.endpoint === "receipts"
+        && pendingAuctionTransaction
+        && formState.receipt_no
+      ) {
+        try {
+          await patchItem("auction-transactions", pendingAuctionTransaction.id, {
+            receipt: formState.receipt_no,
+          });
+          onReceiptTransactionDone?.();
+          resetForm();
+          await loadItems(search, pagination.offset);
+          onDataChange?.();
+          setFeedback("Existing receipt linked and auction transaction marked Paid.");
+        } catch (linkError) {
+          const linkDetail = linkError.response?.data;
+          setError(typeof linkDetail === "string" ? linkDetail : JSON.stringify(linkDetail));
+        }
       } else if (detailString.includes("This receipt number is already used so use another receipt number")) {
         setReceiptDuplicatePopup(true);
       } else {
