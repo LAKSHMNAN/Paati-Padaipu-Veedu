@@ -1,4 +1,14 @@
-export default function DataTable({ columns, rows, onEdit, onDelete, rowKey, extraActions, pagination, onPageChange }) {
+export default function DataTable({
+  columns,
+  rows,
+  onEdit,
+  onDelete,
+  rowKey,
+  extraActions,
+  canEditRow,
+  pagination,
+  onPageChange,
+}) {
   const count = pagination?.count ?? rows.length;
   const limit = pagination?.limit ?? rows.length;
   const offset = pagination?.offset ?? 0;
@@ -33,9 +43,11 @@ export default function DataTable({ columns, rows, onEdit, onDelete, rowKey, ext
                 ))}
                 <td className="action-cell">
                   {extraActions ? <span className="action-slot">{extraActions(row)}</span> : null}
-                  <button type="button" className="ghost-button" onClick={() => onEdit(row)}>
-                    Edit
-                  </button>
+                  {onEdit && (canEditRow ? canEditRow(row) : true) ? (
+                    <button type="button" className="ghost-button" onClick={() => onEdit(row)}>
+                      Edit
+                    </button>
+                  ) : null}
                   <button type="button" className="danger-button" onClick={() => onDelete(row)}>
                     Delete
                   </button>

@@ -202,10 +202,10 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
 
     def get_fields(self):
         fields = super().get_fields()
-        # During update operations, restrict to payment_status and receipt assignment only.
+        # Payment status is controlled by receipt flow, not the auction edit form.
         if self.instance is not None:
             for field_name in fields:
-                if field_name not in {"payment_status", "receipt"}:
+                if field_name not in {"member", "relative", "token_number", "price", "receipt"}:
                     fields[field_name].read_only = True
         return fields
 

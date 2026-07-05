@@ -13,6 +13,11 @@ const INITIAL_ITEM_FORM_STATE = {
   payment_status: "Unpaid",
 };
 
+const INITIAL_EDIT_FORM_STATE = {
+  token_number: "",
+  price: "",
+};
+
 const SOURCE_MODES = {
   MEMBER: "Member",
   NON_MEMBER: "Non-Member",
@@ -39,10 +44,12 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   const [duplicateTokenMessage, setDuplicateTokenMessage] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editPaymentStatus, setEditPaymentStatus] = useState("Paid");
   const [sourceSearchQuery, setSourceSearchQuery] = useState("");
+  const [editSourceSearchQuery, setEditSourceSearchQuery] = useState("");
   const [selectedSource, setSelectedSource] = useState(null);
+  const [selectedEditSource, setSelectedEditSource] = useState(null);
   const [itemFormState, setItemFormState] = useState(INITIAL_ITEM_FORM_STATE);
+  const [editFormState, setEditFormState] = useState(INITIAL_EDIT_FORM_STATE);
   const [selectedItem, setSelectedItem] = useState(null);
   const [pagination, setPagination] = useState({ count: 0, limit: PAGE_SIZE, offset: 0 });
 
@@ -135,6 +142,52 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
     () => availableAuctionItems.find((record) => String(record.value) === String(itemFormState.auction_item_id)),
     [availableAuctionItems, itemFormState.auction_item_id],
   );
+
+  const editableTokenOptions = useMemo(() => {
+    const usedTokens = new Set();
+    (lookupData.auctionItems || []).forEach((record) => {
+      parseTokenList(record.meta?.used_tokens).forEach((token) => usedTokens.add(token));
+    });
+
+    return (lookupData.auctionItems || []).flatMap((record) => {
+      const itemName = record.meta?.auction_item_name || record.label;
+      return parseTokenList(record.meta?.tokens)
+        .filter((token) => !usedTokens.has(token) || String(token) === String(selectedItem?.token_number))
+        .map((token) => ({
+          value: token,
+          label: `${token} - ${itemName}`,
+        }));
+    });
+  }, [lookupData.auctionItems, selectedItem?.token_number]);
+
+  const filteredEditSourceOptions = useMemo(() => {
+    const query = editSourceSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return sourceOptions;
+    }
+
+    return sourceOptions.filter((record) => {
+      const meta = record.meta || {};
+      const searchableParts = [
+        record.value,
+        record.label,
+        record.sourceType,
+        record.sourceId,
+        meta.name,
+        meta.primary_phone,
+        meta.secondary_phone,
+        meta.native_place,
+        meta.non_member_id,
+        meta.phone_1,
+        meta.phone_2,
+        meta.place,
+        meta.type,
+        record.searchText,
+      ];
+
+      return searchableParts.filter(Boolean).join(" ").toLowerCase().includes(query);
+    });
+  }, [sourceOptions, editSourceSearchQuery]);
 
   useEffect(() => {
     const query = sourceSearchQuery.trim().toLowerCase();
@@ -263,8 +316,22 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   };
 
   const handleEdit = (item) => {
+    const sourceRecord = sourceOptions.find((record) => {
+      if (item.source_type === SOURCE_MODES.MEMBER) {
+        return String(record.sourceType) === SOURCE_MODES.MEMBER && String(record.sourceId) === String(item.member_id);
+      }
+      return String(record.sourceType) === SOURCE_MODES.NON_MEMBER && String(record.sourceId) === String(item.non_member_id);
+    });
+
     setSelectedItem(item);
-    setEditPaymentStatus(item.payment_status);
+    setSelectedEditSource(sourceRecord?.sourceMeta || null);
+    setEditSourceSearchQuery(item.source_id || item.member_name || "");
+    setEditFormState({
+      token_number: item.token_number || "",
+      price: item.price ? String(Math.round(Number(item.price))) : "",
+    });
+    setError("");
+    setFeedback("");
     setEditModalOpen(true);
   };
 
@@ -291,20 +358,54 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
     onOpenReceiptTransaction?.(item);
   };
 
-  const handleUpdatePaymentStatus = async (event) => {
+  const handleEditSourceSelect = (record) => {
+    setSelectedEditSource(record.sourceMeta);
+    setEditSourceSearchQuery(record.sourceMeta?.name || record.sourceId || record.value || "");
+  };
+
+  const handleEditFormChange = (event) => {
+    const { name, value } = event.target;
+    setEditFormState((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  };
+
+  const handleUpdateTransaction = async (event) => {
     event.preventDefault();
     setError("");
     setFeedback("");
 
+    if (!selectedEditSource) {
+      setError("Select a member or non-member before updating the transaction.");
+      return;
+    }
+    if (!editFormState.token_number) {
+      setError("Select a token number before updating the transaction.");
+      return;
+    }
+
     try {
-      await updateItem(config.endpoint, selectedItem.id, { payment_status: editPaymentStatus });
-      setFeedback("Payment status updated successfully.");
+      const isMember = selectedEditSource.__sourceType === SOURCE_MODES.MEMBER;
+      await updateItem(config.endpoint, selectedItem.id, {
+        member: isMember ? selectedEditSource.member_id : null,
+        relative: isMember ? null : selectedEditSource.id,
+        token_number: editFormState.token_number,
+        price: String(Math.round(Number(editFormState.price || 0))),
+      });
+      setFeedback("Auction Transaction updated successfully.");
       setEditModalOpen(false);
       await loadItems(search, pagination.offset);
       onDataChange?.();
       setSelectedItem(null);
+      setSelectedEditSource(null);
     } catch (updateError) {
       const detail = updateError.response?.data;
+      if (hasTokenNumberError(detail)) {
+        setDuplicateTokenMessage(TOKEN_ALREADY_USED_MESSAGE);
+        setError("");
+        return;
+      }
       setError(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
   };
@@ -312,6 +413,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   const closeEditModal = () => {
     setEditModalOpen(false);
     setError("");
+    setSelectedEditSource(null);
   };
 
   const closeDuplicateTokenPopup = () => {
@@ -319,71 +421,10 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   };
 
   const selectedSourceIsMember = selectedSource?.__sourceType === SOURCE_MODES.MEMBER;
+  const selectedEditSourceIsMember = selectedEditSource?.__sourceType === SOURCE_MODES.MEMBER;
   const modalTitle = "Select Data And Enter Transaction";
   const searchLabel = "Search Member or Non Member";
   const searchPlaceholder = "Search by member/non-member ID, name, or phone number";
-
-  const editTransactionModal = editModalOpen && selectedItem
-    ? createPortal(
-        <div className="modal-backdrop" role="presentation" onClick={closeEditModal}>
-          <div
-            className="modal-card"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Edit auction transaction payment status"
-            onClick={(event) => event.stopPropagation()}
-            style={{ width: "min(500px, calc(100vw - 32px))" }}
-          >
-            <div className="modal-card__header">
-              <div>
-                <p className="eyebrow">Update Payment Status</p>
-                <h3 style={{ marginTop: "8px" }}>Edit Auction Transaction</h3>
-              </div>
-              <button type="button" className="ghost-button" onClick={closeEditModal}>
-                Close
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gap: "18px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div className="record-detail">
-                  <span>Member/Item</span>
-                  <strong>{selectedItem.item_name || "-"}</strong>
-                </div>
-                <div className="record-detail">
-                  <span>Price</span>
-                  <strong>{selectedItem.price ? money(selectedItem.price) : "-"}</strong>
-                </div>
-              </div>
-
-              <form className="record-form" onSubmit={handleUpdatePaymentStatus}>
-                <label>
-                  <span>Payment Status</span>
-                  <select
-                    value={editPaymentStatus}
-                    onChange={(event) => setEditPaymentStatus(event.target.value)}
-                    required
-                  >
-                    <option value="Paid">Paid</option>
-                    <option value="Unpaid">Unpaid</option>
-                  </select>
-                </label>
-
-                {error ? <p className="status-message status-message--error">{error}</p> : null}
-
-                <div className="form-actions">
-                  <button type="submit">Update Payment Status</button>
-                  <button type="button" className="ghost-button" onClick={closeEditModal}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
-    : null;
 
   const createTransactionModal = createModalOpen
     ? createPortal(
@@ -584,6 +625,175 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
       )
     : null;
 
+  const editTransactionModal = editModalOpen && selectedItem
+    ? createPortal(
+        <div className="modal-backdrop" role="presentation" onClick={closeEditModal}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit auction transaction"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: "min(760px, calc(100vw - 32px))" }}
+          >
+            <div className="modal-card__header">
+              <div>
+                <p className="eyebrow">Auction Transaction</p>
+                <h3 style={{ marginTop: "8px" }}>Edit Auction Transaction</h3>
+              </div>
+              <button type="button" className="ghost-button" onClick={closeEditModal}>
+                Close
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: "18px" }}>
+              <label style={{ display: "grid", gap: "8px" }}>
+                <span style={{ fontWeight: 600 }}>{searchLabel}</span>
+                <input
+                  type="text"
+                  value={editSourceSearchQuery}
+                  onChange={(event) => {
+                    setEditSourceSearchQuery(event.target.value);
+                    if (!event.target.value.trim()) {
+                      setSelectedEditSource(null);
+                    }
+                  }}
+                  placeholder={searchPlaceholder}
+                />
+              </label>
+
+              {editSourceSearchQuery.trim() ? (
+                <div
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: "18px",
+                    background: "rgba(139, 94, 52, 0.04)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {filteredEditSourceOptions.length ? (
+                    filteredEditSourceOptions.slice(0, 6).map((record, index) => {
+                      const isMemberRecord = record.sourceType === SOURCE_MODES.MEMBER;
+                      const isActive = isMemberRecord
+                        ? String(record.meta?.member_id) === String(selectedEditSource?.member_id)
+                        : String(record.meta?.id) === String(selectedEditSource?.id);
+
+                      return (
+                        <button
+                          key={record.value}
+                          type="button"
+                          onClick={() => handleEditSourceSelect(record)}
+                          style={{
+                            width: "100%",
+                            padding: "14px 16px",
+                            borderRadius: 0,
+                            border: "none",
+                            borderBottom:
+                              index === Math.min(filteredEditSourceOptions.length, 6) - 1
+                                ? "none"
+                                : "1px solid var(--line)",
+                            background: isActive ? "rgba(139, 94, 52, 0.14)" : "transparent",
+                            color: "var(--text)",
+                            textAlign: "left",
+                          }}
+                        >
+                          <strong style={{ display: "block", marginBottom: "4px" }}>{record.meta?.name}</strong>
+                          <span style={{ color: "var(--muted)", fontSize: "0.95rem" }}>
+                            {isMemberRecord
+                              ? `${record.meta?.member_id} | ${record.meta?.primary_phone} | ${record.meta?.native_place}`
+                              : `${record.meta?.non_member_id} | ${record.meta?.phone_1} | ${record.meta?.type}`}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p style={{ margin: 0, padding: "14px 16px", color: "var(--muted)" }}>
+                      No matching member or non-member found.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {selectedEditSource ? (
+                <>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: "12px",
+                    }}
+                  >
+                    <div className="record-detail">
+                      <span>Type</span>
+                      <strong>{selectedEditSource.__sourceType}</strong>
+                    </div>
+                    <div className="record-detail">
+                      <span>{selectedEditSourceIsMember ? "Member ID" : "Non member ID"}</span>
+                      <strong>
+                        {selectedEditSourceIsMember ? selectedEditSource.member_id : selectedEditSource.non_member_id}
+                      </strong>
+                    </div>
+                    <div className="record-detail">
+                      <span>Name</span>
+                      <strong>{selectedEditSource.name}</strong>
+                    </div>
+                    <div className="record-detail">
+                      <span>Primary Phone Number</span>
+                      <strong>
+                        {selectedEditSourceIsMember ? selectedEditSource.primary_phone : selectedEditSource.phone_1}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <form className="record-form" onSubmit={handleUpdateTransaction}>
+                    <label>
+                      <span>Token Number</span>
+                      <select
+                        name="token_number"
+                        value={editFormState.token_number}
+                        onChange={handleEditFormChange}
+                        required
+                      >
+                        <option value="">Select token number</option>
+                        {editableTokenOptions.map((token) => (
+                          <option key={token.value} value={token.value}>
+                            {token.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>Price</span>
+                      <input
+                        type="number"
+                        name="price"
+                        value={editFormState.price}
+                        onChange={handleEditFormChange}
+                        required
+                        step="1"
+                        placeholder="Enter price"
+                      />
+                    </label>
+
+                    {error ? <p className="status-message status-message--error">{error}</p> : null}
+
+                    <div className="form-actions">
+                      <button type="submit">Update Transaction</button>
+                      <button type="button" className="ghost-button" onClick={closeEditModal}>
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
   const duplicateTokenPopup = duplicateTokenMessage
     ? createPortal(
         <div className="modal-backdrop popup-backdrop" role="presentation" onClick={closeDuplicateTokenPopup}>
@@ -640,6 +850,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
         columns={config.columns}
         rows={items}
         onEdit={handleEdit}
+        canEditRow={(row) => row.payment_status === "Unpaid"}
         onDelete={handleDelete}
         rowKey={config.rowKey}
         pagination={pagination}
