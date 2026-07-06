@@ -15,6 +15,7 @@ from .models import (
     Registration,
     Relative,
 )
+from .year_utils import filter_queryset_by_year
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -85,6 +86,7 @@ class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = Member
         fields = "__all__"
+        read_only_fields = ["record_year"]
 
 
 class ReceiptSerializer(serializers.ModelSerializer):
@@ -111,12 +113,14 @@ class ReceiptSerializer(serializers.ModelSerializer):
             "source_type",
             "phone_number",
             "receipt_date",
+            "record_year",
             "created_at",
             "updated_at",
         ]
         extra_kwargs = {
             "receipt_no": {"validators": []},
         }
+        read_only_fields = ["record_year"]
 
     def validate_receipt_no(self, value):
         receipt_no = str(value or "").strip()
@@ -186,6 +190,7 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
             "receipt",
             "receipt_no",
             "challan",
+            "record_year",
             "created_at",
             "updated_at",
         ]
@@ -198,6 +203,7 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
             "native_place",
             "item",
             "item_name",
+            "record_year",
         ]
 
     def get_fields(self):
@@ -265,7 +271,7 @@ class RelativeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Relative
         fields = "__all__"
-        read_only_fields = ["non_member_id"]
+        read_only_fields = ["non_member_id", "record_year"]
 
 
 class DepositSerializer(serializers.ModelSerializer):
@@ -273,7 +279,8 @@ class DepositSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Deposit
-        fields = ["id", "receipt", "receipt_no", "amount", "date", "created_at", "updated_at"]
+        fields = ["id", "receipt", "receipt_no", "amount", "date", "record_year", "created_at", "updated_at"]
+        read_only_fields = ["record_year"]
 
 
 class AuctionItemSerializer(serializers.ModelSerializer):
@@ -283,7 +290,7 @@ class AuctionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = AuctionItem
         fields = "__all__"
-        read_only_fields = ["auction_item_name_tamil", "tokens", "used_tokens"]
+        read_only_fields = ["auction_item_name_tamil", "tokens", "used_tokens", "record_year"]
 
 
 class EelamEntrySerializer(serializers.ModelSerializer):
@@ -301,10 +308,11 @@ class EelamEntrySerializer(serializers.ModelSerializer):
             "source_name",
             "phone",
             "amount",
+            "record_year",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["phone"]
+        read_only_fields = ["phone", "record_year"]
 
     def get_source_id(self, obj):
         if obj.member:
@@ -337,10 +345,11 @@ class DonationSerializer(serializers.ModelSerializer):
             "donor_name",
             "phone",
             "amount",
+            "record_year",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["donor_name", "phone"]
+        read_only_fields = ["donor_name", "phone", "record_year"]
 
     def get_source_id(self, obj):
         if obj.member:
@@ -379,13 +388,18 @@ def apply_member_search(queryset, query):
     )
 
 
-def build_dashboard_payload():
-    aggregates = AuctionTransaction.objects.aggregate(
+def build_dashboard_payload(year=None):
+    auction_transactions = filter_queryset_by_year(AuctionTransaction.objects.all(), year)
+    donations = filter_queryset_by_year(Donation.objects.all(), year)
+    members = filter_queryset_by_year(Member.objects.all(), year)
+    receipts = filter_queryset_by_year(Receipt.objects.all(), year)
+
+    aggregates = auction_transactions.aggregate(
         total_auction_value=Sum("price"),
         total_paid_auction_value=Sum("price", filter=Q(payment_status=AuctionTransaction.PaymentStatus.PAID)),
         total_unpaid_auction_value=Sum("price", filter=Q(payment_status=AuctionTransaction.PaymentStatus.UNPAID)),
     )
-    donation_aggregates = Donation.objects.aggregate(
+    donation_aggregates = donations.aggregate(
         total_member_donations=Sum("amount", filter=Q(donor_type=Donation.DonorType.MEMBER)),
         total_non_member_donations=Sum("amount", filter=Q(donor_type=Donation.DonorType.NON_MEMBER)),
         total_donations=Sum("amount"),
@@ -397,6 +411,6 @@ def build_dashboard_payload():
         "total_member_donations": donation_aggregates["total_member_donations"] or 0,
         "total_non_member_donations": donation_aggregates["total_non_member_donations"] or 0,
         "total_donations": donation_aggregates["total_donations"] or 0,
-        "total_members": Member.objects.count(),
-        "total_receipts": Receipt.objects.count(),
+        "total_members": members.count(),
+        "total_receipts": receipts.count(),
     }

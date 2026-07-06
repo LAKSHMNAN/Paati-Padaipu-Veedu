@@ -13,6 +13,7 @@ from .report_serializers import (
     AuctionTransactionDetailReportSerializer,
     AuctionTransactionReportDataSerializer,
 )
+from .year_utils import filter_queryset_by_year, parse_record_year
 
 
 EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -146,8 +147,13 @@ def get_donation_source_id(donation):
     return "N/A"
 
 
-def get_filtered_donations(search=""):
+def get_report_record_year(request):
+    return parse_record_year(request.GET.get("year"))
+
+
+def get_filtered_donations(search="", year=None):
     queryset = Donation.objects.select_related("member", "relative").all()
+    queryset = filter_queryset_by_year(queryset, year)
     if not search:
         return queryset
     return queryset.filter(
@@ -368,7 +374,7 @@ def serialize_report_transactions(transactions):
     return AuctionTransactionDetailReportSerializer(transactions, many=True).data
 
 
-def store_auction_report_snapshot(data, report_status):
+def store_auction_report_snapshot(data, report_status, year=None):
     transactions = data.get("transactions") or data.get("all_transactions") or []
     serialized_transactions = serialize_report_transactions(transactions)
     summary = data.get("summary", {})
@@ -385,6 +391,7 @@ def store_auction_report_snapshot(data, report_status):
 
     return AuctionReport.objects.create(
         report_status=report_status,
+        record_year=year or datetime.now().year,
         transaction_count=transaction_count or 0,
         total_amount=total_amount or Decimal("0.00"),
         summary=make_json_ready(summary),
@@ -398,6 +405,9 @@ class AuctionTransactionReportView(View):
 
     def get_search_query(self):
         return (self.request.GET.get("search") or "").strip()
+
+    def get_record_year(self):
+        return get_report_record_year(self.request)
 
     def apply_search_filter(self, queryset):
         query = self.get_search_query()
@@ -418,7 +428,10 @@ class AuctionTransactionReportView(View):
         
         # Get all transactions
         all_transactions = self.apply_search_filter(
-            AuctionTransaction.objects.select_related("member", "relative", "item", "receipt").all()
+            filter_queryset_by_year(
+                AuctionTransaction.objects.select_related("member", "relative", "item", "receipt").all(),
+                self.get_record_year(),
+            )
         )
 
         # Calculate totals
@@ -515,7 +528,7 @@ class AuctionTransactionReportView(View):
         """Generate JSON format report."""
         
         data = self.get_report_data()
-        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL)
+        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL, self.get_record_year())
         limit, offset = get_limit_offset(self.request)
         transaction_count = data["transactions"].count()
         paged_transactions = data["transactions"][offset : offset + limit]
@@ -540,7 +553,7 @@ class AuctionTransactionReportView(View):
         """Generate CSV format report."""
         
         data = self.get_report_data()
-        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL)
+        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL, self.get_record_year())
         summary = data["summary"]
         transactions = data["all_transactions"]
 
@@ -616,7 +629,7 @@ class AuctionTransactionReportView(View):
             )
 
         data = self.get_report_data()
-        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL)
+        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL, self.get_record_year())
         summary = data["summary"]
         transactions = data["all_transactions"]
 
@@ -764,7 +777,7 @@ class AuctionTransactionReportView(View):
             )
 
         data = self.get_report_data()
-        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL)
+        store_auction_report_snapshot(data, AuctionReport.ReportStatus.ALL, self.get_record_year())
         summary = data["summary"]
         transactions = data["all_transactions"]
 
@@ -877,6 +890,9 @@ class AuctionPaymentStatusReportView(View):
     def get_search_query(self):
         return (self.request.GET.get("search") or "").strip()
 
+    def get_record_year(self):
+        return get_report_record_year(self.request)
+
     def apply_search_filter(self, queryset):
         query = self.get_search_query()
         if not query:
@@ -893,6 +909,7 @@ class AuctionPaymentStatusReportView(View):
 
     def get_all_transactions(self):
         queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt")
+        queryset = filter_queryset_by_year(queryset, self.get_record_year())
         return self.apply_search_filter(queryset)
 
     def get_filtered_transactions(self):
@@ -999,7 +1016,7 @@ class AuctionPaymentStatusReportView(View):
 
     def get_json_report(self):
         data = self.get_report_data()
-        store_auction_report_snapshot(data, self.payment_status_value)
+        store_auction_report_snapshot(data, self.payment_status_value, self.get_record_year())
         limit, offset = get_limit_offset(self.request)
         transaction_count = data["transactions"].count()
         paged_transactions = data["transactions"][offset : offset + limit]
@@ -1022,7 +1039,7 @@ class AuctionPaymentStatusReportView(View):
 
     def get_csv_report(self):
         data = self.get_report_data()
-        store_auction_report_snapshot(data, self.payment_status_value)
+        store_auction_report_snapshot(data, self.payment_status_value, self.get_record_year())
         summary = data["summary"]
         transactions = data["transactions"]
 
@@ -1104,7 +1121,7 @@ class AuctionPaymentStatusReportView(View):
             )
 
         data = self.get_report_data()
-        store_auction_report_snapshot(data, self.payment_status_value)
+        store_auction_report_snapshot(data, self.payment_status_value, self.get_record_year())
         status_label = self.get_payment_status_label()
         workbook = create_payment_status_excel_workbook(data, status_label)
         filename = f"{status_label.lower()}_auction_transaction_report.xlsx"
@@ -1121,7 +1138,7 @@ class AuctionPaymentStatusReportView(View):
             )
 
         data = self.get_report_data()
-        store_auction_report_snapshot(data, self.payment_status_value)
+        store_auction_report_snapshot(data, self.payment_status_value, self.get_record_year())
         summary = data["summary"]
         transactions = data["transactions"]
 
@@ -1223,7 +1240,7 @@ class DonationReportView(View):
 
     def get_report_data(self):
         search = self.request.GET.get("search", "").strip()
-        donations = get_filtered_donations(search)
+        donations = get_filtered_donations(search, get_report_record_year(self.request))
         aggregates = donations.aggregate(total_amount=Sum("amount"), donor_count=Count("id"))
         member_aggregates = donations.filter(donor_type=Donation.DonorType.MEMBER).aggregate(
             total_amount=Sum("amount"),

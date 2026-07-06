@@ -39,6 +39,7 @@ from .serializers import (
     apply_member_search,
     build_dashboard_payload,
 )
+from .year_utils import filter_queryset_by_year, get_request_record_year
 
 
 AUTH_SESSION_KEY = "registration_id"
@@ -111,6 +112,7 @@ class LoginView(GenericAPIView):
             ip_address=ip_address,
         )
         request.session[AUTH_SESSION_KEY] = account.id
+        request.session.set_expiry(0)
         return Response({"user": RegistrationSerializer(account).data}, status=status.HTTP_200_OK)
 
 
@@ -137,6 +139,17 @@ class CurrentUserView(GenericAPIView):
 
 
 class BaseListCreateView(mixins.ListModelMixin, mixins.CreateModelMixin, GenericAPIView):
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        return filter_queryset_by_year(queryset, get_request_record_year(self.request))
+
+    def perform_create(self, serializer):
+        year = get_request_record_year(self.request)
+        if year is not None and "record_year" in {field.name for field in serializer.Meta.model._meta.fields}:
+            serializer.save(record_year=year)
+            return
+        serializer.save()
+
     def get(self, request, *args, **kwargs):
         return self.list(request, *args, **kwargs)
 
@@ -145,6 +158,10 @@ class BaseListCreateView(mixins.ListModelMixin, mixins.CreateModelMixin, Generic
 
 
 class BaseDetailView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, GenericAPIView):
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        return filter_queryset_by_year(queryset, get_request_record_year(self.request))
+
     def get(self, request, *args, **kwargs):
         return self.retrieve(request, *args, **kwargs)
 
@@ -386,5 +403,5 @@ class DashboardView(GenericAPIView):
     serializer_class = DashboardSerializer
 
     def get(self, request, *args, **kwargs):
-        serializer = self.get_serializer(build_dashboard_payload())
+        serializer = self.get_serializer(build_dashboard_payload(get_request_record_year(request)))
         return Response(serializer.data, status=status.HTTP_200_OK)

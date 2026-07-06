@@ -239,7 +239,8 @@ select {
   font-weight: 700;
 }
 
-.auth-card input {
+.auth-card input,
+.auth-card select {
   width: 100%;
   border: 1px solid var(--line);
   background: white;

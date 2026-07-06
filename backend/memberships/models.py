@@ -159,6 +159,10 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
+def current_record_year():
+    return timezone.now().year
+
+
 class Registration(TimeStampedModel):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(blank=True)
@@ -217,6 +221,7 @@ class Member(TimeStampedModel):
     city = models.CharField(max_length=100)
     pincode = models.CharField(max_length=6, validators=[RegexValidator(regex=r"^\d{6}$", message="Pincode must be 6 digits.")])
     native_place = models.CharField(max_length=20, choices=NativePlace.choices)
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["member_id"]
@@ -254,6 +259,7 @@ class Relative(TimeStampedModel):
     phone_2 = models.CharField(max_length=10, blank=True, null=True, unique=True, validators=[phone_validator])
     place = models.CharField(max_length=100, blank=True)
     type = models.CharField(max_length=20, choices=RelativeType.choices)
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["name"]
@@ -304,6 +310,7 @@ class Receipt(TimeStampedModel):
     relative = models.ForeignKey(Relative, on_delete=models.PROTECT, related_name="receipts", null=True, blank=True)
     phone_number = models.CharField(max_length=10, validators=[phone_validator])
     receipt_date = models.DateField(null=True, blank=True)
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["receipt_no"]
@@ -341,6 +348,7 @@ class AuctionItem(TimeStampedModel):
     quantity = models.PositiveIntegerField()
     tokens = models.JSONField(default=list, blank=True)
     used_tokens = models.JSONField(default=list, blank=True)
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["auction_item_name", "id"]
@@ -505,6 +513,7 @@ class AuctionTransaction(TimeStampedModel):
         null=True,
     )
     challan = models.CharField(max_length=100, blank=True)
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["-created_at"]
@@ -611,6 +620,7 @@ class AuctionReport(TimeStampedModel):
     summary = models.JSONField(default=dict)
     payment_status_breakdown = models.JSONField(default=list, blank=True)
     transactions = models.JSONField(default=list, blank=True)
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         db_table = "auction_report"
@@ -624,6 +634,7 @@ class Deposit(TimeStampedModel):
     receipt = models.ForeignKey(Receipt, on_delete=models.PROTECT, related_name="deposits")
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
     date = models.DateField()
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["-date", "-created_at"]
@@ -642,6 +653,7 @@ class EelamEntry(TimeStampedModel):
     relative = models.ForeignKey(Relative, on_delete=models.PROTECT, null=True, blank=True, related_name="eelam_entries")
     phone = models.CharField(max_length=10, validators=[phone_validator], editable=False)
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["-created_at"]
@@ -679,6 +691,7 @@ class Donation(TimeStampedModel):
     donor_name = models.CharField(max_length=255, editable=False)
     phone = models.CharField(max_length=10, validators=[phone_validator], editable=False)
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
+    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["-created_at"]

@@ -6,7 +6,7 @@ import AuctionTransactionForm from "./components/AuctionTransactionForm";
 import AuctionReports from "./components/AuctionReports";
 import AuthPage from "./components/AuthPage";
 import ModuleIcon from "./components/ModuleIcon";
-import { fetchCollection, fetchCurrentUser, fetchDashboard, logoutUser } from "./services/api";
+import { fetchCollection, fetchCurrentUser, fetchDashboard, logoutUser, setActiveRecordYear } from "./services/api";
 
 const money = (value) => `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 const amount = (value) => Math.round(Number(value || 0)).toLocaleString("en-IN");
@@ -16,6 +16,55 @@ const paymentStatusBadge = (status) => (
     {status || "-"}
   </span>
 );
+const currentYear = new Date().getFullYear();
+const yearOptions = Array.from({ length: 12 }, (_item, index) => currentYear - index * 3);
+
+function YearSelectionPage({ user, onSelectYear, onLogout }) {
+  const [year, setYear] = useState(String(currentYear));
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    onSelectYear(year);
+  };
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-panel year-panel">
+        <div className="auth-panel__copy">
+          <p className="eyebrow">Select Working Year</p>
+          <h1>Shri Udayammai Paati Padaippu Veedu</h1>
+          <p>
+            Signed in as {user.username}. Choose the year you want to work in; only that year's records,
+            totals, receipts, transactions, and reports will be shown.
+          </p>
+        </div>
+
+        <form className="auth-card" onSubmit={handleSubmit}>
+          <div>
+            <p className="eyebrow">Working Year</p>
+            <h2>Open Year Data</h2>
+          </div>
+
+          <label>
+            <span>Year</span>
+            <select value={year} onChange={(event) => setYear(event.target.value)} required>
+              {yearOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button type="submit">Continue</button>
+          <button type="button" className="ghost-button" onClick={onLogout}>
+            Logout
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
 
 export default function App() {
   const [dashboard, setDashboard] = useState({});
@@ -28,6 +77,7 @@ export default function App() {
   const [pendingAuctionTransaction, setPendingAuctionTransaction] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(null);
   const isAdmin = Boolean(currentUser?.is_admin);
 
   const loadLookups = async () => {
@@ -49,23 +99,35 @@ export default function App() {
     fetchCurrentUser()
       .then((user) => {
         setCurrentUser(user);
-        if (user) {
-          loadLookups().catch(() => null);
-        }
       })
       .catch(() => null)
       .finally(() => setAuthChecked(true));
   }, []);
 
+  useEffect(() => {
+    setActiveRecordYear(selectedYear);
+    if (currentUser && selectedYear) {
+      loadLookups().catch(() => null);
+    }
+  }, [currentUser, selectedYear]);
+
   const handleAuthenticated = (user) => {
     setCurrentUser(user);
-    loadLookups().catch(() => null);
+    setSelectedYear(null);
   };
 
   const handleLogout = async () => {
     await logoutUser();
     setCurrentUser(null);
+    setSelectedYear(null);
+    setActiveRecordYear(null);
     setActiveModule("dashboard");
+  };
+
+  const handleSelectYear = (year) => {
+    setSelectedYear(String(year));
+    setActiveModule("dashboard");
+    setPendingAuctionTransaction(null);
   };
 
   useEffect(() => {
@@ -570,6 +632,10 @@ export default function App() {
     return <AuthPage onAuthenticated={handleAuthenticated} />;
   }
 
+  if (!selectedYear) {
+    return <YearSelectionPage user={currentUser} onSelectYear={handleSelectYear} onLogout={handleLogout} />;
+  }
+
   return (
     <div className={`app-shell ${isSidebarHidden ? "app-shell--menu-hidden" : ""}`}>
       {isSidebarHidden ? (
@@ -606,6 +672,11 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-user">
+          <span>Working year</span>
+          <strong>{selectedYear}</strong>
+          <button type="button" className="sidebar-logout" onClick={() => setSelectedYear(null)}>
+            Change Year
+          </button>
           <span>Signed in as</span>
           <strong>{currentUser.username}</strong>
           <button type="button" className="sidebar-logout" onClick={handleLogout}>
