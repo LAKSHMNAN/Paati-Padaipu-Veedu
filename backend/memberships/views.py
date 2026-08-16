@@ -1,5 +1,6 @@
 from django.contrib.auth.hashers import check_password
 from django.http import JsonResponse
+from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import Q
 from django.utils.decorators import method_decorator
@@ -16,6 +17,7 @@ from .models import (
     Deposit,
     Donation,
     EelamEntry,
+    Invoice,
     Login,
     Member,
     Receipt,
@@ -30,6 +32,7 @@ from .serializers import (
     DepositSerializer,
     DonationSerializer,
     EelamEntrySerializer,
+    InvoiceSerializer,
     LoginSerializer,
     MemberSerializer,
     ReceiptSerializer,
@@ -247,7 +250,7 @@ class AuctionTransactionListCreateView(BaseListCreateView):
     serializer_class = AuctionTransactionSerializer
 
     def get_queryset(self):
-        queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt").all()
+        queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt", "invoice").all()
         query = self.request.query_params.get("search")
         if not query:
             return queryset
@@ -271,8 +274,45 @@ class AuctionTransactionListCreateView(BaseListCreateView):
 
 
 class AuctionTransactionDetailView(BaseDetailView):
-    queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt").all()
+    queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt", "invoice").all()
     serializer_class = AuctionTransactionSerializer
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AuctionTransactionInvoiceGenerateView(GenericAPIView):
+    serializer_class = InvoiceSerializer
+
+    def post(self, request, pk, *args, **kwargs):
+        selected_year = get_request_record_year(request)
+        with transaction.atomic():
+            queryset = AuctionTransaction.objects.select_for_update().select_related(
+                "member",
+                "relative",
+                "item",
+                "receipt",
+                "invoice",
+            )
+            queryset = filter_queryset_by_year(queryset, selected_year)
+            auction_transaction = queryset.filter(pk=pk).first()
+            if auction_transaction is None:
+                return Response({"detail": "Auction transaction not found for the selected year."}, status=404)
+
+            existing_invoice = getattr(auction_transaction, "invoice", None)
+            if existing_invoice is not None:
+                return Response(self.get_serializer(existing_invoice).data, status=status.HTTP_200_OK)
+
+            if auction_transaction.payment_status != AuctionTransaction.PaymentStatus.UNPAID:
+                return Response(
+                    {"detail": "Invoice can only be generated for an unpaid auction transaction."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            invoice = Invoice.objects.create(
+                auction_transaction=auction_transaction,
+                amount=auction_transaction.price,
+                record_year=auction_transaction.record_year,
+            )
+            return Response(self.get_serializer(invoice).data, status=status.HTTP_201_CREATED)
 
 
 class RelativeListCreateView(BaseListCreateView):

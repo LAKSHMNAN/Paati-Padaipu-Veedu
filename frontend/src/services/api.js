@@ -141,6 +141,20 @@ export const getAuctionTransactionReportUrl = (status = "", format = "csv", sear
   return `${api.defaults.baseURL}/reports/auction-transactions/${statusPath}?${params.toString()}`;
 };
 
+export const generateAuctionTransactionInvoice = async (transactionId) => {
+  const { data } = await api.post(`/auction-transactions/${transactionId}/invoice/`, {});
+  return data;
+};
+
+export const getInvoicePdfUrl = (invoiceNo) => {
+  const params = new URLSearchParams();
+  if (activeRecordYear) {
+    params.set("year", activeRecordYear);
+  }
+  const query = params.toString();
+  return `${api.defaults.baseURL}/invoices/${encodeURIComponent(invoiceNo)}/pdf/${query ? `?${query}` : ""}`;
+};
+
 export const getDonationReportUrl = (format = "pdf", search = "") => {
   const params = new URLSearchParams({ format });
   if (search) {

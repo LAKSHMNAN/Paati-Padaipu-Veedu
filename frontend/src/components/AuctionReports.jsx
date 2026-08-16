@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchAuctionTransactionReport, getAuctionTransactionReportUrl } from "../services/api";
+import {
+  fetchAuctionTransactionReport,
+  generateAuctionTransactionInvoice,
+  getAuctionTransactionReportUrl,
+  getInvoicePdfUrl,
+} from "../services/api";
 
 const PAGE_SIZE = 10;
 const money = (value) => `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
@@ -28,13 +33,14 @@ export default function AuctionReports() {
   const [report, setReport] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [invoiceActionId, setInvoiceActionId] = useState(null);
   const [pagination, setPagination] = useState({ count: 0, limit: PAGE_SIZE, offset: 0 });
 
   const summary = report?.summary || {};
   const transactions = report?.transactions || [];
   const isSearchReport = Boolean(appliedSearch);
   const showReceiptColumn = activeStatus === "paid" || isSearchReport;
-  const reportColumnCount = showReceiptColumn ? 10 : 9;
+  const reportColumnCount = showReceiptColumn ? 12 : 11;
 
   const activeLabel = useMemo(
     () => statusOptions.find((option) => option.key === activeStatus)?.label || "Paid",
@@ -93,6 +99,27 @@ export default function AuctionReports() {
   const openExport = (format) => {
     const reportStatus = appliedSearch ? "" : activeStatus;
     window.open(getAuctionTransactionReportUrl(reportStatus, format, appliedSearch), "_blank", "noopener,noreferrer");
+  };
+
+  const openInvoice = (invoiceNo) => {
+    if (!invoiceNo) return;
+    window.open(getInvoicePdfUrl(invoiceNo), "_blank", "noopener,noreferrer");
+  };
+
+  const handleGenerateInvoice = async (transaction) => {
+    setInvoiceActionId(transaction.id);
+    setError("");
+    try {
+      const invoice = transaction.invoice_no
+        ? transaction
+        : await generateAuctionTransactionInvoice(transaction.id);
+      openInvoice(invoice.invoice_no);
+      await loadReport(appliedSearch, pagination.offset);
+    } catch (invoiceError) {
+      setError(invoiceError.response?.data?.detail || "Unable to generate invoice.");
+    } finally {
+      setInvoiceActionId(null);
+    }
   };
 
   return (
@@ -177,8 +204,10 @@ export default function AuctionReports() {
               <th>Token</th>
               <th>Price (Rs)</th>
               <th>Status</th>
+              <th>Invoice</th>
               {showReceiptColumn ? <th>Receipt</th> : null}
               <th>Payment Date</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -199,8 +228,37 @@ export default function AuctionReports() {
                   <td>{transaction.token_number}</td>
                   <td>{amount(transaction.price)}</td>
                   <td>{paymentStatusBadge(transaction.payment_status)}</td>
+                  <td>
+                    {transaction.invoice_no ? (
+                      <>
+                        <strong>{transaction.invoice_no}</strong>
+                        <small className="table-subtext">{formatReceiptDate(transaction.invoice_date)}</small>
+                      </>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   {showReceiptColumn ? <td>{transaction.receipt_no || "-"}</td> : null}
                   <td>{formatReceiptDate(transaction.receipt_date)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="ghost-button table-action-button"
+                      onClick={() => handleGenerateInvoice(transaction)}
+                      disabled={
+                        invoiceActionId === transaction.id ||
+                        (!transaction.invoice_no && transaction.payment_status !== "Unpaid")
+                      }
+                    >
+                      {transaction.invoice_no
+                        ? "View Invoice"
+                        : transaction.payment_status !== "Unpaid"
+                          ? "No Invoice"
+                          : invoiceActionId === transaction.id
+                            ? "Generating..."
+                            : "Generate Invoice"}
+                    </button>
+                  </td>
                 </tr>
               ))
             ) : (

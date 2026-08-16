@@ -1,6 +1,17 @@
 from django.contrib import admin
 
-from .models import AuctionReport, AuctionTransaction, Deposit, Donation, EelamEntry, Member, Receipt, Relative
+from .models import (
+    AuctionReport,
+    AuctionTransaction,
+    Deposit,
+    Donation,
+    EelamEntry,
+    Invoice,
+    Member,
+    NotificationLog,
+    Receipt,
+    Relative,
+)
 
 
 @admin.register(Member)
@@ -30,6 +41,14 @@ class AuctionTransactionAdmin(admin.ModelAdmin):
         "receipt__receipt_no",
         "challan",
     )
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ("invoice_no", "auction_transaction", "invoice_date", "amount", "status", "record_year")
+    list_filter = ("status", "record_year", "invoice_date")
+    search_fields = ("invoice_no", "auction_transaction__name", "auction_transaction__receipt__receipt_no")
+    readonly_fields = ("invoice_no", "created_at", "updated_at")
 
 
 @admin.register(AuctionReport)
@@ -72,3 +91,38 @@ class EelamEntryAdmin(admin.ModelAdmin):
 class DonationAdmin(admin.ModelAdmin):
     list_display = ("donor_type", "donor_name", "phone", "amount")
     search_fields = ("member__member_id", "member__name", "relative__non_member_id", "relative__name", "donor_name", "phone")
+
+
+@admin.register(NotificationLog)
+class NotificationLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "auction_transaction",
+        "recipient_name",
+        "phone_number",
+        "notification_type",
+        "status",
+        "meta_message_id",
+        "sent_at",
+        "created_at",
+    )
+    list_filter = ("notification_type", "status", "created_at", "sent_at")
+    search_fields = (
+        "recipient_name",
+        "phone_number",
+        "meta_message_id",
+        "auction_transaction__receipt__receipt_no",
+    )
+    readonly_fields = (
+        "auction_transaction",
+        "recipient_name",
+        "phone_number",
+        "notification_type",
+        "message",
+        "meta_message_id",
+        "status",
+        "response_json",
+        "sent_at",
+        "created_at",
+        "updated_at",
+    )

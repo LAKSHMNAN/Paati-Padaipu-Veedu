@@ -27,6 +27,8 @@ class AuctionTransactionDetailReportSerializer(serializers.ModelSerializer):
     relative_name = serializers.CharField(source="relative.name", read_only=True, allow_null=True)
     non_member_id = serializers.CharField(source="relative.non_member_id", read_only=True, allow_null=True)
     item_name = serializers.CharField(source="item.auction_item_name", read_only=True)
+    invoice_no = serializers.CharField(source="invoice.invoice_no", read_only=True, allow_null=True)
+    invoice_date = serializers.DateField(source="invoice.invoice_date", read_only=True, allow_null=True)
     receipt_no = serializers.CharField(source="receipt.receipt_no", read_only=True, allow_null=True)
     receipt_date = serializers.DateField(source="receipt.receipt_date", read_only=True, allow_null=True)
     source_type = serializers.SerializerMethodField()
@@ -44,6 +46,8 @@ class AuctionTransactionDetailReportSerializer(serializers.ModelSerializer):
             "token_number",
             "price",
             "payment_status",
+            "invoice_no",
+            "invoice_date",
             "receipt_no",
             "receipt_date",
             "created_at",

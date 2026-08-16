@@ -19,6 +19,7 @@ from .views import (
     RelativeDetailView,
     RelativeListCreateView,
     AuctionTransactionDetailView,
+    AuctionTransactionInvoiceGenerateView,
     AuctionTransactionListCreateView,
     CurrentUserView,
     LoginView,
@@ -28,6 +29,7 @@ from .views import (
 from .report_views import (
     AuctionTransactionReportView,
     DonationReportView,
+    InvoicePdfView,
     PaidAuctionTransactionReportView,
     UnpaidAuctionTransactionReportView,
 )
@@ -43,8 +45,14 @@ urlpatterns = [
     path("receipts/<str:receipt_no>/", ReceiptDetailView.as_view(), name="receipt-detail"),
     path("auction-transactions/", AuctionTransactionListCreateView.as_view(), name="auction-transaction-list"),
     path("auction-transactions/<int:pk>/", AuctionTransactionDetailView.as_view(), name="auction-transaction-detail"),
+    path(
+        "auction-transactions/<int:pk>/invoice/",
+        AuctionTransactionInvoiceGenerateView.as_view(),
+        name="auction-transaction-invoice-generate",
+    ),
     path("transactions/", AuctionTransactionListCreateView.as_view(), name="transaction-list"),
     path("transactions/<int:pk>/", AuctionTransactionDetailView.as_view(), name="transaction-detail"),
+    path("invoices/<str:invoice_no>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
     path("relatives/", RelativeListCreateView.as_view(), name="relative-list"),
     path("relatives/<int:pk>/", RelativeDetailView.as_view(), name="relative-detail"),
     path("deposits/", DepositListCreateView.as_view(), name="deposit-list"),

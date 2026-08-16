@@ -8,7 +8,7 @@ from django.db.models import Sum, Count, Q
 from django.http import HttpResponse
 from django.views import View
 
-from .models import AuctionReport, AuctionTransaction, Donation
+from .models import AuctionReport, AuctionTransaction, Donation, Invoice
 from .report_serializers import (
     AuctionTransactionDetailReportSerializer,
     AuctionTransactionReportDataSerializer,
@@ -176,6 +176,16 @@ def get_transaction_receipt_no(transaction):
     return transaction.receipt.receipt_no if transaction.receipt else "-"
 
 
+def get_transaction_invoice_no(transaction):
+    invoice = getattr(transaction, "invoice", None)
+    return invoice.invoice_no if invoice else "-"
+
+
+def get_transaction_invoice_date(transaction):
+    invoice = getattr(transaction, "invoice", None)
+    return invoice.invoice_date.strftime("%Y-%m-%d") if invoice and invoice.invoice_date else ""
+
+
 def build_excel_response(workbook, filename):
     output = BytesIO()
     workbook.save(output)
@@ -184,6 +194,81 @@ def build_excel_response(workbook, filename):
     response = HttpResponse(output.getvalue(), content_type=EXCEL_MIME_TYPE)
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+class InvoicePdfView(View):
+    def get_record_year(self):
+        return get_report_record_year(self.request)
+
+    def get(self, request, invoice_no, *args, **kwargs):
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            return HttpResponse(
+                json.dumps({"error": "fpdf2 not installed. Install with: pip install fpdf2"}),
+                content_type="application/json",
+                status=400,
+            )
+
+        queryset = Invoice.objects.select_related(
+            "auction_transaction",
+            "auction_transaction__member",
+            "auction_transaction__relative",
+            "auction_transaction__item",
+        )
+        queryset = filter_queryset_by_year(queryset, self.get_record_year())
+        invoice = queryset.filter(invoice_no=invoice_no).first()
+        if invoice is None:
+            return HttpResponse(
+                json.dumps({"detail": "Invoice not found for the selected year."}),
+                content_type="application/json",
+                status=404,
+            )
+
+        transaction_obj = invoice.auction_transaction
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "SHRI UDAYAMMAI PAATI PADAIPPU VEEDU", ln=True, align="C")
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, "AUCTION INVOICE", ln=True, align="C")
+        pdf.set_font("Arial", "", 10)
+        pdf.cell(0, 8, "This document is an invoice only. It is not a receipt/payment proof.", ln=True, align="C")
+        pdf.ln(6)
+
+        rows = [
+            ("Invoice Number", invoice.invoice_no),
+            ("Invoice Date", invoice.invoice_date.strftime("%Y-%m-%d") if invoice.invoice_date else "-"),
+            ("Selected Year", invoice.record_year),
+            ("Customer Type", get_transaction_source_type(transaction_obj)),
+            ("Customer ID", get_transaction_source_id(transaction_obj)),
+            ("Customer Name", get_transaction_source_name(transaction_obj)),
+            ("Phone", transaction_obj.primary_phone_number),
+            ("Auction Item", transaction_obj.item.auction_item_name),
+            ("Token Number", transaction_obj.token_number),
+            ("Amount", rupees(invoice.amount)),
+            ("Invoice Status", invoice.status),
+            ("Payment Status", AuctionTransaction.PaymentStatus.UNPAID),
+        ]
+
+        label_width = 52
+        pdf.set_font("Arial", "", 11)
+        for label, value in rows:
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(label_width, 9, f"{label}:", border=1)
+            pdf.set_font("Arial", "", 11)
+            pdf.cell(0, 9, str(value if value not in [None, ""] else "-"), border=1, ln=True)
+
+        pdf.ln(8)
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 8, "Amount Payable", ln=True)
+        pdf.set_font("Arial", "B", 18)
+        pdf.cell(0, 12, rupees(invoice.amount), ln=True)
+
+        pdf_bytes = normalize_pdf_output(pdf.output(dest="S"))
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="{invoice.invoice_no}.pdf"'
+        return response
 
 
 def apply_excel_table_style(worksheet, row_number, column_count, header_fill, header_font, border):
@@ -229,7 +314,7 @@ def create_payment_status_excel_workbook(data, status_label):
     thin_side = Side(style="thin", color="D8C8B8")
     border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
-    worksheet.merge_cells("A1:J1")
+    worksheet.merge_cells("A1:M1")
     title_cell = worksheet["A1"]
     title_cell.value = f"{status_label} AUCTION TRANSACTION REPORT"
     title_cell.font = title_font
@@ -242,7 +327,7 @@ def create_payment_status_excel_workbook(data, status_label):
     worksheet["B2"] = summary["report_date"].strftime("%d-%m-%Y %I:%M %p")
     worksheet["B2"].number_format = "dd-mm-yyyy h:mm AM/PM"
 
-    worksheet.merge_cells("A4:J4")
+    worksheet.merge_cells("A4:M4")
     worksheet["A4"] = "Summary"
     worksheet["A4"].font = section_font
     worksheet["A4"].fill = section_fill
@@ -304,7 +389,7 @@ def create_payment_status_excel_workbook(data, status_label):
         row += 1
 
     transaction_title_row = row + 2
-    worksheet.merge_cells(start_row=transaction_title_row, start_column=1, end_row=transaction_title_row, end_column=10)
+    worksheet.merge_cells(start_row=transaction_title_row, start_column=1, end_row=transaction_title_row, end_column=13)
     worksheet.cell(row=transaction_title_row, column=1).value = f"{status_label.title()} Transaction Details"
     worksheet.cell(row=transaction_title_row, column=1).font = section_font
     worksheet.cell(row=transaction_title_row, column=1).fill = section_fill
@@ -320,6 +405,9 @@ def create_payment_status_excel_workbook(data, status_label):
         "Token No",
         "Price",
         "Payment Status",
+        "Invoice No",
+        "Invoice Date",
+        "Receipt No",
         "Payment Date",
     ]
     for col, header in enumerate(transaction_headers, 1):
@@ -338,16 +426,19 @@ def create_payment_status_excel_workbook(data, status_label):
             txn.token_number,
             money_decimal(txn.price),
             txn.payment_status,
+            get_transaction_invoice_no(txn),
+            get_transaction_invoice_date(txn),
+            get_transaction_receipt_no(txn),
             get_transaction_payment_date(txn),
         ]
         for col, value in enumerate(values, 1):
             worksheet.cell(row=row, column=col).value = value
-        worksheet.cell(row=row, column=7).number_format = '"Rs." #,##0'
+        worksheet.cell(row=row, column=8).number_format = '"Rs." #,##0'
         apply_excel_body_style(worksheet, row, len(transaction_headers), border)
         row += 1
 
     last_data_row = max(row - 1, transaction_header_row)
-    worksheet.auto_filter.ref = f"A{transaction_header_row}:J{last_data_row}"
+    worksheet.auto_filter.ref = f"A{transaction_header_row}:M{last_data_row}"
 
     for column_letter, width in {
         "A": 8,
@@ -359,7 +450,10 @@ def create_payment_status_excel_workbook(data, status_label):
         "G": 12,
         "H": 16,
         "I": 16,
-        "J": 22,
+        "J": 18,
+        "K": 18,
+        "L": 18,
+        "M": 22,
     }.items():
         worksheet.column_dimensions[column_letter].width = width
 
@@ -429,7 +523,7 @@ class AuctionTransactionReportView(View):
         # Get all transactions
         all_transactions = self.apply_search_filter(
             filter_queryset_by_year(
-                AuctionTransaction.objects.select_related("member", "relative", "item", "receipt").all(),
+                AuctionTransaction.objects.select_related("member", "relative", "item", "receipt", "invoice").all(),
                 self.get_record_year(),
             )
         )
@@ -594,7 +688,7 @@ class AuctionTransactionReportView(View):
         writer.writerow(["DETAILED TRANSACTIONS"])
         writer.writerow([
             "ID", "Member/Non-Member ID", "Member/Non-Member Name", "Source Type", "Item",
-            "Token Number", "Price", "Payment Status", "Payment Date"
+            "Token Number", "Price", "Payment Status", "Invoice No", "Invoice Date", "Receipt No", "Payment Date"
         ])
         
         for txn in transactions:
@@ -607,6 +701,9 @@ class AuctionTransactionReportView(View):
                 txn.token_number,
                 rupees(txn.price),
                 txn.payment_status,
+                get_transaction_invoice_no(txn),
+                get_transaction_invoice_date(txn),
+                get_transaction_receipt_no(txn),
                 get_transaction_payment_date(txn),
             ])
 
@@ -652,7 +749,7 @@ class AuctionTransactionReportView(View):
         row = 1
 
         # Title
-        worksheet.merge_cells(f"A{row}:J{row}")
+        worksheet.merge_cells(f"A{row}:L{row}")
         title_cell = worksheet[f"A{row}"]
         title_cell.value = "AUCTION TRANSACTION REPORT"
         title_cell.font = title_font
@@ -722,7 +819,7 @@ class AuctionTransactionReportView(View):
 
         headers = [
             "ID", "Member/Non-Member ID", "Member/Non-Member", "Source Type", "Item",
-            "Token", "Price (Rs.)", "Payment Status", "Payment Date"
+            "Token", "Price (Rs.)", "Payment Status", "Invoice No", "Invoice Date", "Receipt No", "Payment Date"
         ]
         
         for col, header in enumerate(headers, 1):
@@ -743,9 +840,12 @@ class AuctionTransactionReportView(View):
             worksheet[f"F{row}"] = txn.token_number
             worksheet[f"G{row}"] = txn.price
             worksheet[f"H{row}"] = txn.payment_status
-            worksheet[f"I{row}"] = get_transaction_payment_date(txn)
+            worksheet[f"I{row}"] = get_transaction_invoice_no(txn)
+            worksheet[f"J{row}"] = get_transaction_invoice_date(txn)
+            worksheet[f"K{row}"] = get_transaction_receipt_no(txn)
+            worksheet[f"L{row}"] = get_transaction_payment_date(txn)
 
-            for col in range(1, 10):
+            for col in range(1, 13):
                 worksheet.cell(row=row, column=col).border = border
 
             row += 1
@@ -760,6 +860,9 @@ class AuctionTransactionReportView(View):
         worksheet.column_dimensions["G"].width = 15
         worksheet.column_dimensions["H"].width = 18
         worksheet.column_dimensions["I"].width = 18
+        worksheet.column_dimensions["J"].width = 18
+        worksheet.column_dimensions["K"].width = 18
+        worksheet.column_dimensions["L"].width = 18
 
         # Generate response
         return build_excel_response(workbook, "auction_transaction_report.xlsx")
@@ -830,16 +933,18 @@ class AuctionTransactionReportView(View):
         pdf.cell(0, 10, "DETAILED TRANSACTIONS", ln=True)
 
         columns = [
-            ("ID", 10, 8),
-            ("Source ID", 22, 14),
-            ("Name", 48, 20),
-            ("Type", 18, 12),
-            ("Item", 44, 20),
-            ("Token", 14, 8),
-            ("Price", 24, 14),
-            ("Status", 20, 10),
-            ("Receipt", 24, 14),
-            ("Payment Date", 30, 16),
+            ("ID", 8, 8),
+            ("Source ID", 18, 14),
+            ("Name", 38, 20),
+            ("Type", 16, 12),
+            ("Item", 34, 20),
+            ("Token", 12, 8),
+            ("Price", 20, 14),
+            ("Status", 17, 10),
+            ("Invoice", 22, 14),
+            ("Inv Date", 20, 12),
+            ("Receipt", 22, 14),
+            ("Payment Date", 24, 16),
         ]
         draw_pdf_table_header(pdf, columns)
 
@@ -856,6 +961,8 @@ class AuctionTransactionReportView(View):
                     txn.token_number,
                     rupees(txn.price),
                     txn.payment_status,
+                    get_transaction_invoice_no(txn),
+                    get_transaction_invoice_date(txn),
                     get_transaction_receipt_no(txn),
                     get_transaction_payment_date(txn),
                 ],
@@ -908,7 +1015,7 @@ class AuctionPaymentStatusReportView(View):
         )
 
     def get_all_transactions(self):
-        queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt")
+        queryset = AuctionTransaction.objects.select_related("member", "relative", "item", "receipt", "invoice")
         queryset = filter_queryset_by_year(queryset, self.get_record_year())
         return self.apply_search_filter(queryset)
 
@@ -1087,6 +1194,9 @@ class AuctionPaymentStatusReportView(View):
                 "Token Number",
                 "Price",
                 "Payment Status",
+                "Invoice No",
+                "Invoice Date",
+                "Receipt No",
                 "Payment Date",
             ]
         )
@@ -1102,6 +1212,9 @@ class AuctionPaymentStatusReportView(View):
                     txn.token_number,
                     rupees(txn.price),
                     txn.payment_status,
+                    get_transaction_invoice_no(txn),
+                    get_transaction_invoice_date(txn),
+                    get_transaction_receipt_no(txn),
                     get_transaction_payment_date(txn),
                 ]
             )
@@ -1189,16 +1302,18 @@ class AuctionPaymentStatusReportView(View):
         pdf.cell(0, 8, f"{status_label} TRANSACTION DETAILS", ln=True)
 
         detail_columns = [
-            ("ID", 10, 8),
-            ("Source ID", 22, 14),
-            ("Name", 48, 20),
-            ("Type", 18, 12),
-            ("Item", 44, 20),
-            ("Token", 14, 8),
-            ("Price", 24, 14),
-            ("Status", 20, 10),
-            ("Receipt", 24, 14),
-            ("Payment Date", 30, 16),
+            ("ID", 8, 8),
+            ("Source ID", 18, 14),
+            ("Name", 38, 20),
+            ("Type", 16, 12),
+            ("Item", 34, 20),
+            ("Token", 12, 8),
+            ("Price", 20, 14),
+            ("Status", 17, 10),
+            ("Invoice", 22, 14),
+            ("Inv Date", 20, 12),
+            ("Receipt", 22, 14),
+            ("Payment Date", 24, 16),
         ]
         draw_pdf_table_header(pdf, detail_columns)
 
@@ -1215,6 +1330,8 @@ class AuctionPaymentStatusReportView(View):
                     txn.token_number,
                     rupees(txn.price),
                     txn.payment_status,
+                    get_transaction_invoice_no(txn),
+                    get_transaction_invoice_date(txn),
                     get_transaction_receipt_no(txn),
                     get_transaction_payment_date(txn),
                 ],

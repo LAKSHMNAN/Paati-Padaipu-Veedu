@@ -14,6 +14,7 @@ export default function DashboardCards({ dashboard }) {
     { label: "Non-Member Donations", value: formatCurrency(dashboard.total_non_member_donations), tone: "slate" },
     { label: "Total Donations", value: formatCurrency(dashboard.total_donations), tone: "gold" },
     { label: "Registered Members", value: dashboard.total_members || 0, tone: "blue" },
+    { label: "Registered Non Members", value: dashboard.total_non_members || 0, tone: "green" },
     { label: "Receipts Issued", value: dashboard.total_receipts || 0, tone: "slate" },
   ];
 
