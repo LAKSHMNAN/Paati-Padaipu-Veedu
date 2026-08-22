@@ -36,6 +36,51 @@ const parseTokenList = (value) =>
     .map((token) => token.trim())
     .filter(Boolean);
 
+function SourceOptionList({ options, selectedSource, onSelect }) {
+  if (!options.length) {
+    return (
+      <p style={{ margin: 0, padding: "14px 16px", color: "var(--muted)" }}>
+        No matching member or non-member found.
+      </p>
+    );
+  }
+
+  return options.slice(0, 6).map((record) => {
+    const isMemberRecord = record.sourceType === SOURCE_MODES.MEMBER;
+    const isActive = isMemberRecord
+      ? String(record.meta?.member_id) === String(selectedSource?.member_id)
+      : String(record.meta?.id) === String(selectedSource?.id);
+
+    return (
+      <button
+        key={record.value}
+        type="button"
+        className="auction-source-option"
+        onClick={() => onSelect(record)}
+        data-active={isActive ? "true" : "false"}
+      >
+        <span className="auction-source-option__grid">
+          <span className="auction-source-option__primary">
+            <strong title={record.meta?.name || ""}>{record.meta?.name}</strong>
+            <span>{isMemberRecord ? "MEMBER" : "NON-MEMBER"}</span>
+          </span>
+          <span className="auction-source-option__meta">
+            <span title={isMemberRecord ? record.meta?.member_id : record.meta?.non_member_id}>
+              {isMemberRecord ? record.meta?.member_id : record.meta?.non_member_id}
+            </span>
+            <span title={isMemberRecord ? record.meta?.primary_phone : record.meta?.phone_1}>
+              {isMemberRecord ? record.meta?.primary_phone : record.meta?.phone_1}
+            </span>
+            <span title={isMemberRecord ? record.meta?.native_place : record.meta?.type}>
+              {isMemberRecord ? record.meta?.native_place : record.meta?.type}
+            </span>
+          </span>
+        </span>
+      </button>
+    );
+  });
+}
+
 export default function AuctionTransactionForm({ config, lookupData, onDataChange, onOpenReceiptTransaction }) {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
@@ -230,8 +275,6 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   };
 
   const resetCreateState = () => {
-    setSourceSearchQuery("");
-    setSelectedSource(null);
     setItemFormState(INITIAL_ITEM_FORM_STATE);
     setError("");
     setDuplicateTokenMessage("");
@@ -250,9 +293,11 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
       setDuplicateTokenMessage("All auction item has finished");
       return;
     }
+    if (!selectedSource) {
+      setError("Select a member or non-member before adding auction transaction data.");
+      return;
+    }
     setCreateModalOpen(true);
-    setSourceSearchQuery("");
-    setSelectedSource(null);
     setItemFormState(INITIAL_ITEM_FORM_STATE);
   };
 
@@ -423,8 +468,8 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
   const selectedSourceIsMember = selectedSource?.__sourceType === SOURCE_MODES.MEMBER;
   const selectedEditSourceIsMember = selectedEditSource?.__sourceType === SOURCE_MODES.MEMBER;
   const modalTitle = "Select Data And Enter Transaction";
-  const searchLabel = "Search Member or Non Member";
-  const searchPlaceholder = "Search by member/non-member ID, name, or phone number";
+  const searchLabel = "Select Member / Non-Member";
+  const searchPlaceholder = "Search by name, ID or phone...";
 
   const createTransactionModal = createModalOpen
     ? createPortal(
@@ -448,75 +493,6 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
             </div>
 
             <div style={{ display: "grid", gap: "18px" }}>
-              <div>
-                <label style={{ display: "grid", gap: "8px" }}>
-                  <span style={{ fontWeight: 600 }}>{searchLabel}</span>
-                  <input
-                    type="text"
-                    value={sourceSearchQuery}
-                    onChange={(event) => {
-                      setSourceSearchQuery(event.target.value);
-                      if (!event.target.value.trim()) {
-                        setSelectedSource(null);
-                      }
-                    }}
-                    placeholder={searchPlaceholder}
-                  />
-                </label>
-              </div>
-
-              {sourceSearchQuery.trim() ? (
-                <div
-                  style={{
-                    border: "1px solid var(--line)",
-                    borderRadius: "18px",
-                    background: "rgba(139, 94, 52, 0.04)",
-                    overflow: "hidden",
-                  }}
-                >
-                  {filteredSourceOptions.length ? (
-                    filteredSourceOptions.slice(0, 6).map((record, index) => {
-                      const isMemberRecord = record.sourceType === SOURCE_MODES.MEMBER;
-                      const isActive = isMemberRecord
-                        ? String(record.meta?.member_id) === String(selectedSource?.member_id)
-                        : String(record.meta?.id) === String(selectedSource?.id);
-
-                      return (
-                        <button
-                          key={record.value}
-                          type="button"
-                          onClick={() => handleSourceSelect(record)}
-                          style={{
-                            width: "100%",
-                            padding: "14px 16px",
-                            borderRadius: 0,
-                            border: "none",
-                            borderBottom:
-                              index === Math.min(filteredSourceOptions.length, 6) - 1
-                                ? "none"
-                                : "1px solid var(--line)",
-                            background: isActive ? "rgba(139, 94, 52, 0.14)" : "transparent",
-                            color: "var(--text)",
-                            textAlign: "left",
-                          }}
-                        >
-                          <strong style={{ display: "block", marginBottom: "4px" }}>{record.meta?.name}</strong>
-                          <span style={{ color: "var(--muted)", fontSize: "0.95rem" }}>
-                            {isMemberRecord
-                              ? `${record.meta?.member_id} | ${record.meta?.primary_phone} | ${record.meta?.native_place}`
-                              : `${record.meta?.non_member_id} | ${record.meta?.phone_1} | ${record.meta?.type}`}
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p style={{ margin: 0, padding: "14px 16px", color: "var(--muted)" }}>
-                      No matching member or non-member found.
-                    </p>
-                  )}
-                </div>
-              ) : null}
-
               {selectedSource ? (
                 <>
                   <div
@@ -609,15 +585,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
                     </div>
                   </form>
                 </>
-              ) : (
-                <div className="preview-panel">
-                  <h4>Selected Data Details</h4>
-                  <p>
-                    Search a member or non-member by ID, name, or phone number. The selected details
-                    will appear here.
-                  </p>
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>,
@@ -821,7 +789,7 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
           <h2>{config.title}</h2>
           <p>{config.description}</p>
         </div>
-        <div className="resource-header__actions">
+        <div className="resource-header__actions auction-transaction-header__actions">
           <form className="search-form" onSubmit={handleSearch}>
             <input
               value={search}
@@ -830,11 +798,49 @@ export default function AuctionTransactionForm({ config, lookupData, onDataChang
             />
             <button type="submit">Search</button>
           </form>
+          <div className="auction-source-selector">
+            <label className="auction-source-selector__field">
+              <span className="auction-source-selector__label">{searchLabel}</span>
+              <input
+                type="text"
+                value={sourceSearchQuery}
+                onChange={(event) => {
+                  setSourceSearchQuery(event.target.value);
+                  setSelectedSource(null);
+                }}
+                placeholder={searchPlaceholder}
+              />
+            </label>
+
+            {sourceSearchQuery.trim() && !selectedSource ? (
+              <div className="auction-source-selector__dropdown">
+                <SourceOptionList
+                  options={filteredSourceOptions}
+                  selectedSource={selectedSource}
+                  onSelect={handleSourceSelect}
+                />
+              </div>
+            ) : null}
+
+            {selectedSource ? (
+              <div className="auction-source-selected">
+                <span className="auction-source-option__primary">
+                  <strong title={selectedSource.name || ""}>{selectedSource.name}</strong>
+                  <span>{selectedSourceIsMember ? "MEMBER" : "NON-MEMBER"}</span>
+                </span>
+                <span className="auction-source-option__meta">
+                  <span>{selectedSourceIsMember ? selectedSource.member_id : selectedSource.non_member_id}</span>
+                  <span>{selectedSourceIsMember ? selectedSource.primary_phone : selectedSource.phone_1}</span>
+                </span>
+              </div>
+            ) : null}
+          </div>
           <div className="auction-transaction-actions">
             <button
               type="button"
               className="create-action-button"
               onClick={openCreateModal}
+              disabled={!selectedSource}
             >
               <span className="create-action-button__icon">+</span>
               <span>Add Data</span>
