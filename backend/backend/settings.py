@@ -39,6 +39,9 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
 if DEBUG and not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+CSRF_TRUSTED_ORIGINS = [
+    "https://paati-padaipu-veedu-production.up.railway.app",
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
