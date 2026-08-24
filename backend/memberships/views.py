@@ -48,6 +48,10 @@ from .year_utils import filter_queryset_by_year, get_request_record_year
 AUTH_SESSION_KEY = "registration_id"
 
 
+class EmptySerializer(serializers.Serializer):
+    pass
+
+
 def get_client_ip(request):
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if forwarded_for:
@@ -121,6 +125,7 @@ class LoginView(GenericAPIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class LogoutView(GenericAPIView):
+    serializer_class = EmptySerializer
     permission_classes = [AllowAny]
     authentication_classes = []
 
@@ -130,6 +135,7 @@ class LogoutView(GenericAPIView):
 
 
 class CurrentUserView(GenericAPIView):
+    serializer_class = RegistrationSerializer
     permission_classes = [AllowAny]
     authentication_classes = []
 
@@ -282,6 +288,11 @@ class AuctionTransactionDetailView(BaseDetailView):
 class AuctionTransactionInvoiceGenerateView(GenericAPIView):
     serializer_class = InvoiceSerializer
 
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Invoice.objects.none()
+        return Invoice.objects.select_related("auction_transaction").all()
+
     def post(self, request, pk, *args, **kwargs):
         selected_year = get_request_record_year(request)
         with transaction.atomic():
@@ -378,6 +389,8 @@ class AuctionItemDetailView(AdminOnlyMixin, BaseDetailView):
 class AuctionItemTranslationView(AdminOnlyMixin, GenericAPIView):
     class InputSerializer(serializers.Serializer):
         auction_item_name = serializers.CharField(allow_blank=True, trim_whitespace=True)
+
+    serializer_class = InputSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.InputSerializer(data=request.data)
