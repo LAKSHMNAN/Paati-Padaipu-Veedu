@@ -32,7 +32,7 @@ function YearSelectionPage({ user, onSelectYear, onLogout }) {
       <section className="auth-panel year-panel">
         <div className="auth-panel__copy">
           <p className="eyebrow">Select Working Year</p>
-          <h1>Shri Udayammai Paati Padaippu Veedu</h1>
+          <h1>ஸ்ரீ உடையம்மை பாட்டி படைப்பு வீடு</h1>
           <p>
             Signed in as {user.username}. Choose the year you want to work in; only that year's records,
             totals, receipts, transactions, and reports will be shown.
@@ -653,7 +653,7 @@ export default function App() {
           Hide Menu
         </button>
         <p className="eyebrow">Production Console</p>
-        <h1>Shri Udayammai Paati Padaippu Veedu</h1>
+        <h1>ஸ்ரீ உடையம்மை பாட்டி படைப்பு வீடு</h1>
         <p className="sidebar-copy">
           Structured replacement for the Excel workflow with validation-first forms, searchable tables, and linked records.
         </p>

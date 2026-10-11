@@ -35,6 +35,36 @@ const normalizeWholeRupeeFields = (payload) => {
   );
 };
 
+const formatApiError = (detail) => {
+  const fallback = "Unable to save record. Please check the details and try again.";
+  if (!detail) {
+    return fallback;
+  }
+
+  if (typeof detail === "string") {
+    const trimmed = detail.trim();
+    if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") || trimmed.includes("<body")) {
+      return fallback;
+    }
+    return trimmed || fallback;
+  }
+
+  if (detail.detail) {
+    return Array.isArray(detail.detail) ? detail.detail.join(" ") : String(detail.detail);
+  }
+
+  if (typeof detail === "object") {
+    const messages = Object.entries(detail).map(([field, value]) => {
+      const label = field.replaceAll("_", " ");
+      const message = Array.isArray(value) ? value.join(" ") : String(value);
+      return `${label}: ${message}`;
+    });
+    return messages.join(" ") || fallback;
+  }
+
+  return fallback;
+};
+
 function SearchableSelect({ field, options, value, onChange, disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -157,6 +187,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
   const [selectedItem, setSelectedItem] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const [errorPopupMessage, setErrorPopupMessage] = useState("");
   const [quantityPopup, setQuantityPopup] = useState(false);
   const [receiptDuplicatePopup, setReceiptDuplicatePopup] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -198,6 +229,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     setFormState(buildInitialState(config.fields));
     setEditingId(null);
     setIsModalOpen(false);
+    setErrorPopupMessage("");
     setManualTranslationOverrides({});
     setLastAutoTranslations({});
   };
@@ -321,6 +353,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
+    setErrorPopupMessage("");
     setFeedback("");
     try {
       const payload = normalizeWholeRupeeFields(config.preparePayload ? config.preparePayload(formState) : formState);
@@ -346,7 +379,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
       onDataChange?.();
     } catch (submitError) {
       const detail = submitError.response?.data;
-      const detailString = typeof detail === "string" ? detail : JSON.stringify(detail);
+      const detailString = formatApiError(detail);
       
       // Check if error is related to quantity limit
       if (detailString.includes("The requested item is no longer available")) {
@@ -368,12 +401,21 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
           setFeedback("Existing receipt linked and auction transaction marked Paid.");
         } catch (linkError) {
           const linkDetail = linkError.response?.data;
-          setError(typeof linkDetail === "string" ? linkDetail : JSON.stringify(linkDetail));
+          const linkDetailString = formatApiError(linkDetail);
+          if (config.useModalForm) {
+            setErrorPopupMessage(linkDetailString);
+          } else {
+            setError(linkDetailString);
+          }
         }
       } else if (detailString.includes("This receipt number is already used so use another receipt number")) {
         setReceiptDuplicatePopup(true);
       } else {
-        setError(detailString);
+        if (config.useModalForm) {
+          setErrorPopupMessage(detailString);
+        } else {
+          setError(detailString);
+        }
       }
     }
   };
@@ -388,6 +430,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     setSelectedItem(item);
     setFeedback("");
     setError("");
+    setErrorPopupMessage("");
     if (translationConfig) {
       setLastAutoTranslations({
         [translationConfig.targetField]: item[translationConfig.targetField] ?? "",
@@ -419,13 +462,14 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
       }
     } catch (deleteError) {
       const detail = deleteError.response?.data;
-      setError(typeof detail === "string" ? detail : JSON.stringify(detail));
+      setError(formatApiError(detail));
     }
   };
 
   const handleOpenCreate = () => {
     setFeedback("");
     setError("");
+    setErrorPopupMessage("");
     setEditingId(null);
     setFormState(buildInitialState(config.fields));
     setManualTranslationOverrides({});
@@ -471,7 +515,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
 
       {config.renderPreview ? <div className="preview-panel">{config.renderPreview(formState, selectOptions)}</div> : null}
 
-      {error ? <p className="status-message status-message--error">{error}</p> : null}
+      {error && !config.useModalForm ? <p className="status-message status-message--error">{error}</p> : null}
       {feedback ? <p className="status-message status-message--success">{feedback}</p> : null}
 
       <div className="form-actions">
@@ -638,6 +682,58 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
     )
     : null;
 
+  const errorPopupMarkup = errorPopupMessage
+    ? createPortal(
+      <div
+        className="modal-backdrop"
+        role="presentation"
+        onClick={() => setErrorPopupMessage("")}
+        style={{
+          position: "fixed",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px",
+          background: "rgba(43, 33, 22, 0.45)",
+          zIndex: 10001,
+        }}
+      >
+        <div
+          className="modal-card"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Validation Error"
+          style={{
+            width: "min(440px, calc(100vw - 32px))",
+            borderRadius: "24px",
+            padding: "24px",
+            background: "var(--panel-strong)",
+            border: "1px solid var(--line)",
+            boxShadow: "var(--shadow)",
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div style={{ textAlign: "center" }}>
+            <h3 style={{ marginBottom: "12px" }}>Unable To Save</h3>
+            <p style={{ marginBottom: "24px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+              {errorPopupMessage}
+            </p>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => setErrorPopupMessage("")}
+              style={{ width: "100%" }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+    : null;
+
   return (
     <section className="resource-card" id={config.endpoint}>
       <div className="resource-header">
@@ -754,6 +850,7 @@ export default function ResourceSection({ config, lookupData, onDataChange, pend
       {modalMarkup && typeof document !== "undefined" ? createPortal(modalMarkup, document.body) : null}
       {quantityPopupMarkup}
       {receiptDuplicatePopupMarkup}
+      {errorPopupMarkup}
     </section>
   );
 }

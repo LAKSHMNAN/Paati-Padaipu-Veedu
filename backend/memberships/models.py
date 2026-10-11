@@ -1,5 +1,6 @@
 from decimal import Decimal
 from functools import lru_cache
+import re
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
@@ -115,11 +116,72 @@ AUCTION_ITEM_WORD_TRANSLATIONS = {
     "deepam": "தீபம்",
 }
 
+AUCTION_ITEM_PHRASE_TRANSLATIONS = {
+    "coconut": "\u0ba4\u0bc7\u0b99\u0bcd\u0b95\u0bbe\u0baf\u0bcd",
+    "vinayaga paanai": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95 \u0baa\u0bbe\u0ba9\u0bc8",
+    "vinayagar paanai": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95\u0bb0\u0bcd \u0baa\u0bbe\u0ba9\u0bc8",
+    "vinayaka paanai": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95 \u0baa\u0bbe\u0ba9\u0bc8",
+    "silver lamp": "\u0bb5\u0bc6\u0bb3\u0bcd\u0bb3\u0bbf \u0bb5\u0bbf\u0bb3\u0b95\u0bcd\u0b95\u0bc1",
+    "brass lamp": "\u0baa\u0bbf\u0ba4\u0bcd\u0ba4\u0bb3\u0bc8 \u0bb5\u0bbf\u0bb3\u0b95\u0bcd\u0b95\u0bc1",
+}
+
+AUCTION_ITEM_WORD_TRANSLATIONS.update(
+    {
+        "coconut": "\u0ba4\u0bc7\u0b99\u0bcd\u0b95\u0bbe\u0baf\u0bcd",
+        "vinayaga": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95",
+        "vinayagar": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95\u0bb0\u0bcd",
+        "vinayaka": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95",
+        "paanai": "\u0baa\u0bbe\u0ba9\u0bc8",
+        "panai": "\u0baa\u0bbe\u0ba9\u0bc8",
+        "lamp": "\u0bb5\u0bbf\u0bb3\u0b95\u0bcd\u0b95\u0bc1",
+        "silver": "\u0bb5\u0bc6\u0bb3\u0bcd\u0bb3\u0bbf",
+        "brass": "\u0baa\u0bbf\u0ba4\u0bcd\u0ba4\u0bb3\u0bc8",
+        "plate": "\u0ba4\u0b9f\u0bcd\u0b9f\u0bc1",
+        "pot": "\u0baa\u0bbe\u0ba9\u0bc8",
+        "bowl": "\u0b95\u0bbf\u0ba3\u0bcd\u0ba3\u0bae\u0bcd",
+        "bucket": "\u0bb5\u0bbe\u0bb3\u0bbf",
+        "chair": "\u0ba8\u0bbe\u0bb1\u0bcd\u0b95\u0bbe\u0bb2\u0bbf",
+        "table": "\u0bae\u0bc7\u0b9a\u0bc8",
+        "fan": "\u0bb5\u0bbf\u0b9a\u0bbf\u0bb1\u0bbf",
+        "saree": "\u0b9a\u0bc7\u0bb2\u0bc8",
+        "sari": "\u0b9a\u0bc7\u0bb2\u0bc8",
+        "vessel": "\u0baa\u0bbe\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd",
+        "rice": "\u0b85\u0bb0\u0bbf\u0b9a\u0bbf",
+        "ghee": "\u0ba8\u0bc6\u0baf\u0bcd",
+        "oil": "\u0b8e\u0ba3\u0bcd\u0ba3\u0bc6\u0baf\u0bcd",
+        "deepam": "\u0ba4\u0bc0\u0baa\u0bae\u0bcd",
+    }
+)
+
+
+def translate_auction_item_name_from_dictionary(name):
+    cleaned_name = " ".join(str(name or "").split())
+    if not cleaned_name:
+        return ""
+
+    direct_translation = AUCTION_ITEM_PHRASE_TRANSLATIONS.get(cleaned_name.lower())
+    if direct_translation:
+        return direct_translation
+
+    translated_parts = []
+    for part in re.split(r"(\s+|[-/&(),])", cleaned_name):
+        normalized = re.sub(r"[^a-z]", "", part.lower())
+        if not normalized:
+            translated_parts.append(part)
+            continue
+        translated = AUCTION_ITEM_WORD_TRANSLATIONS.get(normalized)
+        if not translated:
+            return ""
+        translated_parts.append(translated)
+    return "".join(translated_parts).strip()
+
+
 @lru_cache(maxsize=512)
 def translate_auction_item_name_to_tamil(name):
     cleaned_name = " ".join(str(name or "").split())
     if not cleaned_name:
         return ""
+    dictionary_translation = translate_auction_item_name_from_dictionary(cleaned_name)
 
     try:
         translator = GoogleTranslator(
@@ -129,9 +191,11 @@ def translate_auction_item_name_to_tamil(name):
         )
         translated_text = translator.translate(cleaned_name)
     except Exception:
-        return cleaned_name
+        return dictionary_translation or cleaned_name
 
     translated_text = " ".join(str(translated_text or "").split())
+    if not translated_text or translated_text.casefold() == cleaned_name.casefold():
+        return dictionary_translation or cleaned_name
     return translated_text or cleaned_name
 
 
@@ -149,6 +213,18 @@ def phone_exists_elsewhere(model_class, field_names, phone, instance_pk=None):
     if instance_pk is not None:
         queryset = queryset.exclude(pk=instance_pk)
     return queryset.exists()
+
+
+def find_phone_owner(model_class, field_names, phone, instance_pk=None):
+    if not phone:
+        return None
+    query = models.Q()
+    for field_name in field_names:
+        query |= models.Q(**{field_name: phone})
+    queryset = model_class.objects.filter(query)
+    if instance_pk is not None:
+        queryset = queryset.exclude(pk=instance_pk)
+    return queryset.first()
 
 
 class TimeStampedModel(models.Model):
@@ -221,7 +297,6 @@ class Member(TimeStampedModel):
     city = models.CharField(max_length=100)
     pincode = models.CharField(max_length=6, validators=[RegexValidator(regex=r"^\d{6}$", message="Pincode must be 6 digits.")])
     native_place = models.CharField(max_length=20, choices=NativePlace.choices)
-    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["member_id"]
@@ -231,14 +306,40 @@ class Member(TimeStampedModel):
         self.secondary_phone = normalize_phone(self.secondary_phone)
         if self.secondary_phone and self.secondary_phone == self.primary_phone:
             raise ValidationError({"secondary_phone": "Secondary phone must be different from primary phone."})
-        if phone_exists_elsewhere(Member, ["primary_phone", "secondary_phone"], self.primary_phone, self.pk):
-            raise ValidationError({"primary_phone": "This phone number is already in use."})
-        if self.secondary_phone and phone_exists_elsewhere(Member, ["primary_phone", "secondary_phone"], self.secondary_phone, self.pk):
-            raise ValidationError({"secondary_phone": "This phone number is already in use."})
-        if phone_exists_elsewhere(Relative, ["phone_1", "phone_2"], self.primary_phone):
-            raise ValidationError({"primary_phone": "This phone number is already assigned to a relative."})
-        if self.secondary_phone and phone_exists_elsewhere(Relative, ["phone_1", "phone_2"], self.secondary_phone):
-            raise ValidationError({"secondary_phone": "This phone number is already assigned to a relative."})
+        existing_member = find_phone_owner(Member, ["primary_phone", "secondary_phone"], self.primary_phone, self.pk)
+        if existing_member:
+            raise ValidationError({
+                "primary_phone": (
+                    "This phone number is already in use by member "
+                    f"{existing_member.name} ({existing_member.member_id})."
+                )
+            })
+        if self.secondary_phone:
+            existing_member = find_phone_owner(Member, ["primary_phone", "secondary_phone"], self.secondary_phone, self.pk)
+            if existing_member:
+                raise ValidationError({
+                    "secondary_phone": (
+                        "This phone number is already in use by member "
+                        f"{existing_member.name} ({existing_member.member_id})."
+                    )
+                })
+        existing_relative = find_phone_owner(Relative, ["phone_1", "phone_2"], self.primary_phone)
+        if existing_relative:
+            raise ValidationError({
+                "primary_phone": (
+                    "This phone number is already assigned to non-member "
+                    f"{existing_relative.name} ({existing_relative.non_member_id})."
+                )
+            })
+        if self.secondary_phone:
+            existing_relative = find_phone_owner(Relative, ["phone_1", "phone_2"], self.secondary_phone)
+            if existing_relative:
+                raise ValidationError({
+                    "secondary_phone": (
+                        "This phone number is already assigned to non-member "
+                        f"{existing_relative.name} ({existing_relative.non_member_id})."
+                    )
+                })
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -259,7 +360,6 @@ class Relative(TimeStampedModel):
     phone_2 = models.CharField(max_length=10, blank=True, null=True, unique=True, validators=[phone_validator])
     place = models.CharField(max_length=100, blank=True)
     type = models.CharField(max_length=20, choices=RelativeType.choices)
-    record_year = models.PositiveIntegerField(default=current_record_year)
 
     class Meta:
         ordering = ["name"]
@@ -561,15 +661,17 @@ class AuctionTransaction(TimeStampedModel):
     def save(self, *args, **kwargs):
         with transaction.atomic():
             previous_item_id = None
+            previous_payment_status = None
             if self.pk:
                 previous = (
                     AuctionTransaction.objects.select_for_update()
                     .filter(pk=self.pk)
-                    .values("item_id")
+                    .values("item_id", "payment_status")
                     .first()
                 )
                 if previous:
                     previous_item_id = previous["item_id"]
+                    previous_payment_status = previous["payment_status"]
 
             token_entry = (
                 AuctionItemToken.objects.select_for_update()
@@ -593,7 +695,18 @@ class AuctionTransaction(TimeStampedModel):
             self.full_clean()
             result = super().save(*args, **kwargs)
             AuctionItem.sync_used_tokens(item_ids_to_lock)
+            if (
+                previous_payment_status == self.PaymentStatus.UNPAID
+                and self.payment_status == self.PaymentStatus.PAID
+            ):
+                transaction.on_commit(lambda transaction_id=self.pk: self._send_payment_notification(transaction_id))
             return result
+
+    @staticmethod
+    def _send_payment_notification(transaction_id):
+        from .services.notification_service import send_payment_success_notification
+
+        send_payment_success_notification(transaction_id)
 
     def delete(self, *args, **kwargs):
         with transaction.atomic():
@@ -605,6 +718,102 @@ class AuctionTransaction(TimeStampedModel):
     def __str__(self):
         source = self.member_id or self.relative_id or self.name
         return f"{source} - {self.item.auction_item_name}"
+
+
+class Invoice(TimeStampedModel):
+    class InvoiceStatus(models.TextChoices):
+        ISSUED = "Issued", "Issued"
+        CANCELLED = "Cancelled", "Cancelled"
+
+    invoice_no = models.CharField(max_length=30, primary_key=True)
+    auction_transaction = models.OneToOneField(
+        AuctionTransaction,
+        on_delete=models.PROTECT,
+        related_name="invoice",
+    )
+    invoice_date = models.DateField(default=timezone.localdate)
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    status = models.CharField(max_length=20, choices=InvoiceStatus.choices, default=InvoiceStatus.ISSUED)
+    record_year = models.PositiveIntegerField(default=current_record_year)
+
+    class Meta:
+        ordering = ["-created_at", "-invoice_no"]
+
+    @classmethod
+    def _next_invoice_no(cls, record_year):
+        prefix = f"INV-{record_year}-"
+        existing_numbers = (
+            cls.objects.select_for_update()
+            .filter(record_year=record_year, invoice_no__startswith=prefix)
+            .values_list("invoice_no", flat=True)
+        )
+        last_number = 0
+        for invoice_no in existing_numbers:
+            try:
+                last_number = max(last_number, int(str(invoice_no).replace(prefix, "", 1)))
+            except ValueError:
+                continue
+        return f"{prefix}{last_number + 1:03d}"
+
+    def clean(self):
+        if self.auction_transaction_id:
+            if not self.record_year:
+                self.record_year = self.auction_transaction.record_year
+            if self.amount in (None, ""):
+                self.amount = self.auction_transaction.price
+            if self.record_year != self.auction_transaction.record_year:
+                raise ValidationError({"record_year": "Invoice year must match the auction transaction year."})
+            if self.amount != self.auction_transaction.price:
+                raise ValidationError({"amount": "Invoice amount must match the auction transaction price."})
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            if self.auction_transaction_id:
+                locked_transaction = AuctionTransaction.objects.select_for_update().get(pk=self.auction_transaction_id)
+                self.auction_transaction = locked_transaction
+                self.record_year = locked_transaction.record_year
+                self.amount = locked_transaction.price
+            if not self.invoice_no:
+                self.invoice_no = self._next_invoice_no(self.record_year)
+            self.full_clean()
+            return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.invoice_no
+
+
+class NotificationLog(TimeStampedModel):
+    class NotificationType(models.TextChoices):
+        PAYMENT_SUCCESS = "PAYMENT_SUCCESS", "Payment Success"
+
+    class Status(models.TextChoices):
+        PENDING = "Pending", "Pending"
+        SENT = "Sent", "Sent"
+        FAILED = "Failed", "Failed"
+
+    auction_transaction = models.ForeignKey(
+        AuctionTransaction,
+        on_delete=models.CASCADE,
+        related_name="notification_logs",
+    )
+    recipient_name = models.CharField(max_length=255)
+    phone_number = models.CharField(max_length=20)
+    notification_type = models.CharField(max_length=40, choices=NotificationType.choices)
+    message = models.TextField()
+    meta_message_id = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    response_json = models.JSONField(default=dict, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.notification_type} - {self.phone_number} - {self.status}"
 
 
 class AuctionReport(TimeStampedModel):
