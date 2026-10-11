@@ -47,10 +47,9 @@ export default function AuctionReports() {
     [activeStatus],
   );
 
-  const countCardLabel = isSearchReport ? "Total Count" : `${activeLabel} Count`;
   const amountCardLabel = isSearchReport ? "Total Amount" : `${activeLabel} Amount`;
-  const statusCount = isSearchReport ? summary.total_transactions : summary.status_count;
   const statusAmount = isSearchReport ? summary.total_amount : summary.status_amount;
+  const totalOutstandingAmount = summary.total_amount ?? statusAmount;
   const totalCardLabel = isSearchReport ? "Paid Amount" : "Total Transactions";
   const totalCardValue = isSearchReport ? money(summary.total_paid_amount) : summary.total_transactions ?? 0;
   const otherLabel = isSearchReport ? "Unpaid" : summary.other_label || "Other";
@@ -175,8 +174,8 @@ export default function AuctionReports() {
 
       <div className="dashboard-grid report-summary-grid">
         <article className="metric-card metric-card--green">
-          <span>{countCardLabel}</span>
-          <strong>{statusCount ?? 0}</strong>
+          <span>Total Outstanding</span>
+          <strong>{money(totalOutstandingAmount)}</strong>
         </article>
         <article className="metric-card metric-card--gold">
           <span>{amountCardLabel}</span>

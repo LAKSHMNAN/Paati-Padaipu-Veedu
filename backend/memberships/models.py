@@ -1,5 +1,6 @@
 from decimal import Decimal
 from functools import lru_cache
+import re
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
@@ -115,11 +116,72 @@ AUCTION_ITEM_WORD_TRANSLATIONS = {
     "deepam": "தீபம்",
 }
 
+AUCTION_ITEM_PHRASE_TRANSLATIONS = {
+    "coconut": "\u0ba4\u0bc7\u0b99\u0bcd\u0b95\u0bbe\u0baf\u0bcd",
+    "vinayaga paanai": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95 \u0baa\u0bbe\u0ba9\u0bc8",
+    "vinayagar paanai": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95\u0bb0\u0bcd \u0baa\u0bbe\u0ba9\u0bc8",
+    "vinayaka paanai": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95 \u0baa\u0bbe\u0ba9\u0bc8",
+    "silver lamp": "\u0bb5\u0bc6\u0bb3\u0bcd\u0bb3\u0bbf \u0bb5\u0bbf\u0bb3\u0b95\u0bcd\u0b95\u0bc1",
+    "brass lamp": "\u0baa\u0bbf\u0ba4\u0bcd\u0ba4\u0bb3\u0bc8 \u0bb5\u0bbf\u0bb3\u0b95\u0bcd\u0b95\u0bc1",
+}
+
+AUCTION_ITEM_WORD_TRANSLATIONS.update(
+    {
+        "coconut": "\u0ba4\u0bc7\u0b99\u0bcd\u0b95\u0bbe\u0baf\u0bcd",
+        "vinayaga": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95",
+        "vinayagar": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95\u0bb0\u0bcd",
+        "vinayaka": "\u0bb5\u0bbf\u0ba8\u0bbe\u0baf\u0b95",
+        "paanai": "\u0baa\u0bbe\u0ba9\u0bc8",
+        "panai": "\u0baa\u0bbe\u0ba9\u0bc8",
+        "lamp": "\u0bb5\u0bbf\u0bb3\u0b95\u0bcd\u0b95\u0bc1",
+        "silver": "\u0bb5\u0bc6\u0bb3\u0bcd\u0bb3\u0bbf",
+        "brass": "\u0baa\u0bbf\u0ba4\u0bcd\u0ba4\u0bb3\u0bc8",
+        "plate": "\u0ba4\u0b9f\u0bcd\u0b9f\u0bc1",
+        "pot": "\u0baa\u0bbe\u0ba9\u0bc8",
+        "bowl": "\u0b95\u0bbf\u0ba3\u0bcd\u0ba3\u0bae\u0bcd",
+        "bucket": "\u0bb5\u0bbe\u0bb3\u0bbf",
+        "chair": "\u0ba8\u0bbe\u0bb1\u0bcd\u0b95\u0bbe\u0bb2\u0bbf",
+        "table": "\u0bae\u0bc7\u0b9a\u0bc8",
+        "fan": "\u0bb5\u0bbf\u0b9a\u0bbf\u0bb1\u0bbf",
+        "saree": "\u0b9a\u0bc7\u0bb2\u0bc8",
+        "sari": "\u0b9a\u0bc7\u0bb2\u0bc8",
+        "vessel": "\u0baa\u0bbe\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd",
+        "rice": "\u0b85\u0bb0\u0bbf\u0b9a\u0bbf",
+        "ghee": "\u0ba8\u0bc6\u0baf\u0bcd",
+        "oil": "\u0b8e\u0ba3\u0bcd\u0ba3\u0bc6\u0baf\u0bcd",
+        "deepam": "\u0ba4\u0bc0\u0baa\u0bae\u0bcd",
+    }
+)
+
+
+def translate_auction_item_name_from_dictionary(name):
+    cleaned_name = " ".join(str(name or "").split())
+    if not cleaned_name:
+        return ""
+
+    direct_translation = AUCTION_ITEM_PHRASE_TRANSLATIONS.get(cleaned_name.lower())
+    if direct_translation:
+        return direct_translation
+
+    translated_parts = []
+    for part in re.split(r"(\s+|[-/&(),])", cleaned_name):
+        normalized = re.sub(r"[^a-z]", "", part.lower())
+        if not normalized:
+            translated_parts.append(part)
+            continue
+        translated = AUCTION_ITEM_WORD_TRANSLATIONS.get(normalized)
+        if not translated:
+            return ""
+        translated_parts.append(translated)
+    return "".join(translated_parts).strip()
+
+
 @lru_cache(maxsize=512)
 def translate_auction_item_name_to_tamil(name):
     cleaned_name = " ".join(str(name or "").split())
     if not cleaned_name:
         return ""
+    dictionary_translation = translate_auction_item_name_from_dictionary(cleaned_name)
 
     try:
         translator = GoogleTranslator(
@@ -129,9 +191,11 @@ def translate_auction_item_name_to_tamil(name):
         )
         translated_text = translator.translate(cleaned_name)
     except Exception:
-        return cleaned_name
+        return dictionary_translation or cleaned_name
 
     translated_text = " ".join(str(translated_text or "").split())
+    if not translated_text or translated_text.casefold() == cleaned_name.casefold():
+        return dictionary_translation or cleaned_name
     return translated_text or cleaned_name
 
 

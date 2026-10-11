@@ -229,7 +229,7 @@ class InvoicePdfView(View):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, "SHRI UDAYAMMAI PAATI PADAIPPU VEEDU", ln=True, align="C")
+        pdf.cell(0, 10, "ஸ்ரீ உடையம்மை பாட்டி படைப்பு வீடு", ln=True, align="C")
         pdf.set_font("Arial", "B", 14)
         pdf.cell(0, 10, "AUCTION INVOICE", ln=True, align="C")
         pdf.set_font("Arial", "", 10)
@@ -935,9 +935,10 @@ class AuctionTransactionReportView(View):
         columns = [
             ("ID", 8, 8),
             ("Source ID", 18, 14),
-            ("Name", 38, 20),
+            ("Name", 32, 18),
+            ("Phone", 24, 14),
             ("Type", 16, 12),
-            ("Item", 34, 20),
+            ("Item", 28, 18),
             ("Token", 12, 8),
             ("Price", 20, 14),
             ("Status", 17, 10),
@@ -956,6 +957,7 @@ class AuctionTransactionReportView(View):
                     txn.id,
                     get_transaction_source_id(txn),
                     get_transaction_source_name(txn),
+                    txn.primary_phone_number,
                     get_transaction_source_type(txn),
                     txn.item.auction_item_name,
                     txn.token_number,
@@ -1304,9 +1306,10 @@ class AuctionPaymentStatusReportView(View):
         detail_columns = [
             ("ID", 8, 8),
             ("Source ID", 18, 14),
-            ("Name", 38, 20),
+            ("Name", 32, 18),
+            ("Phone", 24, 14),
             ("Type", 16, 12),
-            ("Item", 34, 20),
+            ("Item", 28, 18),
             ("Token", 12, 8),
             ("Price", 20, 14),
             ("Status", 17, 10),
@@ -1325,6 +1328,7 @@ class AuctionPaymentStatusReportView(View):
                     txn.id,
                     get_transaction_source_id(txn),
                     get_transaction_source_name(txn),
+                    txn.primary_phone_number,
                     get_transaction_source_type(txn),
                     txn.item.auction_item_name,
                     txn.token_number,

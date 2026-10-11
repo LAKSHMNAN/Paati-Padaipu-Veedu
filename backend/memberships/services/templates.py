@@ -2,7 +2,7 @@ def build_payment_success_message(transaction):
     receipt_number = transaction.receipt.receipt_no if transaction.receipt else "-"
     amount = round(transaction.price or 0)
     return (
-        "\U0001f64f Shri Udayammai Paati Padaippu Veedu\n\n"
+        "\U0001f64f ஸ்ரீ உடையம்மை பாட்டி படைப்பு வீடு\n\n"
         f"Dear {transaction.name},\n\n"
         "Your auction payment has been received successfully.\n\n"
         "Auction Item:\n"

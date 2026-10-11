@@ -76,7 +76,7 @@ export default function AuthPage({ onAuthenticated }) {
       <section className="auth-panel">
         <div className="auth-panel__copy">
           <p className="eyebrow">Secure Access</p>
-          <h1>Shri Udayammai Paati Padaippu Veedu</h1>
+          <h1>ஸ்ரீ உடையம்மை பாட்டி படைப்பு வீடு</h1>
           <p>Register once, then sign in to manage members, auction transactions, donations, deposits, and reports.</p>
         </div>
 

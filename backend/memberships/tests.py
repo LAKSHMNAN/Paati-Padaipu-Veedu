@@ -167,6 +167,15 @@ class MembershipModelTests(TestCase):
         )
         self.assertEqual(item.auction_item_name_tamil, "Fancy Gift Box")
 
+    @patch("memberships.models.GoogleTranslator.translate")
+    def test_auction_item_uses_dictionary_when_translation_returns_original(self, mocked_translate):
+        mocked_translate.return_value = "saree"
+        item = AuctionItem.objects.create(
+            auction_item_name="saree",
+            quantity=1,
+        )
+        self.assertEqual(item.auction_item_name_tamil, "\u0b9a\u0bc7\u0bb2\u0bc8")
+
     def test_auction_item_updates_tamil_when_english_changes(self):
         self.item.auction_item_name = "Brass Lamp"
         self.item.save()
