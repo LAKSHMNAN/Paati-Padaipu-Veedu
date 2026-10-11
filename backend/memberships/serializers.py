@@ -10,12 +10,32 @@ from .models import (
     Deposit,
     Donation,
     EelamEntry,
+    Invoice,
     Member,
     Receipt,
     Registration,
     Relative,
 )
 from .year_utils import filter_queryset_by_year
+
+
+def raise_as_drf_validation_error(error):
+    detail = getattr(error, "message_dict", None) or getattr(error, "messages", None) or str(error)
+    raise serializers.ValidationError(detail)
+
+
+class CleanModelSerializer(serializers.ModelSerializer):
+    def create(self, validated_data):
+        try:
+            return super().create(validated_data)
+        except DjangoValidationError as error:
+            raise_as_drf_validation_error(error)
+
+    def update(self, instance, validated_data):
+        try:
+            return super().update(instance, validated_data)
+        except DjangoValidationError as error:
+            raise_as_drf_validation_error(error)
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -82,14 +102,13 @@ class CommaSeparatedTokenField(serializers.Field):
         return tokens
 
 
-class MemberSerializer(serializers.ModelSerializer):
+class MemberSerializer(CleanModelSerializer):
     class Meta:
         model = Member
         fields = "__all__"
-        read_only_fields = ["record_year"]
 
 
-class ReceiptSerializer(serializers.ModelSerializer):
+class ReceiptSerializer(CleanModelSerializer):
     DUPLICATE_RECEIPT_MESSAGE = "This receipt number is already used so use another receipt number"
 
     member_name = serializers.CharField(source="member.name", read_only=True, allow_null=True)
@@ -156,7 +175,7 @@ class ReceiptSerializer(serializers.ModelSerializer):
         return None
 
 
-class AuctionTransactionSerializer(serializers.ModelSerializer):
+class AuctionTransactionSerializer(CleanModelSerializer):
     member_name = serializers.SerializerMethodField()
     member_id = serializers.SerializerMethodField()
     non_member_id = serializers.CharField(source="relative.non_member_id", read_only=True, allow_null=True)
@@ -166,6 +185,8 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
     native_place = serializers.SerializerMethodField()
     item_name = serializers.CharField(source="item.auction_item_name", read_only=True)
     receipt_no = serializers.CharField(source="receipt.receipt_no", read_only=True, allow_null=True)
+    invoice_no = serializers.CharField(source="invoice.invoice_no", read_only=True, allow_null=True)
+    invoice_date = serializers.DateField(source="invoice.invoice_date", read_only=True, allow_null=True)
 
     class Meta:
         model = AuctionTransaction
@@ -189,6 +210,8 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
             "payment_status",
             "receipt",
             "receipt_no",
+            "invoice_no",
+            "invoice_date",
             "challan",
             "record_year",
             "created_at",
@@ -203,6 +226,8 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
             "native_place",
             "item",
             "item_name",
+            "invoice_no",
+            "invoice_date",
             "record_year",
         ]
 
@@ -245,8 +270,7 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
         return ""
 
     def _raise_as_drf_validation_error(self, error):
-        detail = getattr(error, "message_dict", None) or getattr(error, "messages", None) or str(error)
-        raise serializers.ValidationError(detail)
+        raise_as_drf_validation_error(error)
 
     def create(self, validated_data):
         try:
@@ -267,14 +291,71 @@ class AuctionTransactionSerializer(serializers.ModelSerializer):
             self._raise_as_drf_validation_error(error)
 
 
-class RelativeSerializer(serializers.ModelSerializer):
+class InvoiceSerializer(CleanModelSerializer):
+    source_id = serializers.SerializerMethodField()
+    source_name = serializers.SerializerMethodField()
+    source_type = serializers.SerializerMethodField()
+    phone_number = serializers.CharField(source="auction_transaction.primary_phone_number", read_only=True)
+    auction_item = serializers.CharField(source="auction_transaction.item.auction_item_name", read_only=True)
+    token_number = serializers.IntegerField(source="auction_transaction.token_number", read_only=True)
+    payment_status = serializers.CharField(source="auction_transaction.payment_status", read_only=True)
+    receipt_no = serializers.CharField(source="auction_transaction.receipt.receipt_no", read_only=True, allow_null=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "invoice_no",
+            "auction_transaction",
+            "source_id",
+            "source_name",
+            "source_type",
+            "phone_number",
+            "auction_item",
+            "token_number",
+            "invoice_date",
+            "amount",
+            "status",
+            "payment_status",
+            "receipt_no",
+            "record_year",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_source_id(self, obj):
+        transaction = obj.auction_transaction
+        if transaction.member:
+            return transaction.member.member_id
+        if transaction.relative:
+            return transaction.relative.non_member_id
+        return None
+
+    def get_source_name(self, obj):
+        transaction = obj.auction_transaction
+        if transaction.member:
+            return transaction.member.name
+        if transaction.relative:
+            return transaction.relative.name
+        return transaction.name
+
+    def get_source_type(self, obj):
+        transaction = obj.auction_transaction
+        if transaction.member:
+            return "Member"
+        if transaction.relative:
+            return "Non-Member"
+        return None
+
+
+class RelativeSerializer(CleanModelSerializer):
     class Meta:
         model = Relative
         fields = "__all__"
-        read_only_fields = ["non_member_id", "record_year"]
+        read_only_fields = ["non_member_id"]
 
 
-class DepositSerializer(serializers.ModelSerializer):
+class DepositSerializer(CleanModelSerializer):
     receipt_no = serializers.CharField(source="receipt.receipt_no", read_only=True)
 
     class Meta:
@@ -283,7 +364,7 @@ class DepositSerializer(serializers.ModelSerializer):
         read_only_fields = ["record_year"]
 
 
-class AuctionItemSerializer(serializers.ModelSerializer):
+class AuctionItemSerializer(CleanModelSerializer):
     tokens = CommaSeparatedTokenField(read_only=True)
     used_tokens = CommaSeparatedTokenField(read_only=True)
 
@@ -293,7 +374,7 @@ class AuctionItemSerializer(serializers.ModelSerializer):
         read_only_fields = ["auction_item_name_tamil", "tokens", "used_tokens", "record_year"]
 
 
-class EelamEntrySerializer(serializers.ModelSerializer):
+class EelamEntrySerializer(CleanModelSerializer):
     source_name = serializers.SerializerMethodField()
     source_id = serializers.SerializerMethodField()
 
@@ -329,7 +410,7 @@ class EelamEntrySerializer(serializers.ModelSerializer):
         return None
 
 
-class DonationSerializer(serializers.ModelSerializer):
+class DonationSerializer(CleanModelSerializer):
     source_name = serializers.SerializerMethodField()
     source_id = serializers.SerializerMethodField()
 
@@ -374,6 +455,7 @@ class DashboardSerializer(serializers.Serializer):
     total_non_member_donations = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_donations = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_members = serializers.IntegerField()
+    total_non_members = serializers.IntegerField()
     total_receipts = serializers.IntegerField()
 
 
@@ -391,7 +473,6 @@ def apply_member_search(queryset, query):
 def build_dashboard_payload(year=None):
     auction_transactions = filter_queryset_by_year(AuctionTransaction.objects.all(), year)
     donations = filter_queryset_by_year(Donation.objects.all(), year)
-    members = filter_queryset_by_year(Member.objects.all(), year)
     receipts = filter_queryset_by_year(Receipt.objects.all(), year)
 
     aggregates = auction_transactions.aggregate(
@@ -411,6 +492,7 @@ def build_dashboard_payload(year=None):
         "total_member_donations": donation_aggregates["total_member_donations"] or 0,
         "total_non_member_donations": donation_aggregates["total_non_member_donations"] or 0,
         "total_donations": donation_aggregates["total_donations"] or 0,
-        "total_members": members.count(),
+        "total_members": Member.objects.count(),
+        "total_non_members": Relative.objects.count(),
         "total_receipts": receipts.count(),
     }
